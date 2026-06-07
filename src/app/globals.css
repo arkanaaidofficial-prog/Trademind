@@ -19,8 +19,15 @@
 }
 
 @layer base {
-  * { @apply border-border; box-sizing: border-box; }
-  body { @apply bg-background text-foreground; }
+  * {
+    box-sizing: border-box;
+    border-color: hsl(var(--border));
+  }
+  html, body {
+    background-color: #0a0a14;
+    color: #f1f5f9;
+    min-height: 100vh;
+  }
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: hsl(var(--background)); }
   ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 2px; }
