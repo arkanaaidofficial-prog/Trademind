@@ -57,7 +57,7 @@ export default function AnalyticsPage() {
 
   if (trades.length === 0) return (
     <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
-      <p className="text-5xl">📊</p>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-12 h-12 text-gray-600"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       <h2 className="text-white font-bold text-xl">Belum ada data</h2>
       <p className="text-gray-400 text-sm text-center">Tambahkan beberapa trade untuk melihat analytics.</p>
     </div>

@@ -2,6 +2,7 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { tradeFormSchema } from '@/lib/validators/tradeSchema'
 import { toast } from 'sonner'
 import type { Trade } from '@/types/trade'
 
@@ -89,8 +90,15 @@ export default function TradeForm({ trade, userId, mode }: Props) {
     const uploaded: ScreenshotItem[] = []
 
     for (const file of files) {
+      // Validasi ukuran file
       if (file.size > 5 * 1024 * 1024) {
         toast.error(`${file.name} terlalu besar (max 5MB)`)
+        continue
+      }
+      // Validasi tipe file
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']
+      if (!allowedTypes.includes(file.type)) {
+        toast.error(`${file.name} bukan format gambar yang valid (PNG, JPG, WEBP, GIF)`)
         continue
       }
       const ext = file.name.split('.').pop()
@@ -112,16 +120,73 @@ export default function TradeForm({ trade, userId, mode }: Props) {
     if (fileRef.current) fileRef.current.value = ''
   }
 
-  function removeScreenshot(idx: number) {
+  async function removeScreenshot(idx: number) {
+    const supabase = createClient()
+    const sc = screenshots[idx]
+
+    // Hapus file dari Supabase Storage
+    const marker = 'trade-screenshots/'
+    const markerIdx = sc.url.indexOf(marker)
+    if (markerIdx !== -1) {
+      const storagePath = decodeURIComponent(sc.url.slice(markerIdx + marker.length))
+      const { error } = await supabase.storage
+        .from('trade-screenshots')
+        .remove([storagePath])
+      if (error) {
+        toast.error('Gagal menghapus file dari storage: ' + error.message)
+        return
+      }
+    }
+
     setScreenshots(prev => prev.filter((_, i) => i !== idx))
+    toast.success('Screenshot dihapus')
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+
+    // Validasi dasar
     if (!form.symbol || !form.entry_price || !form.position_type) {
       toast.error('Symbol, entry price, dan posisi wajib diisi')
       return
     }
+
+    // Validasi dengan Zod schema
+    const zodResult = tradeFormSchema.safeParse({
+      symbol: form.symbol,
+      market_type: form.market_type,
+      position_type: form.position_type,
+      mode: form.mode,
+      entry_at: form.entry_at,
+      exit_at: form.exit_at || undefined,
+      entry_price: form.entry_price,
+      exit_price: form.exit_price || undefined,
+      position_size: form.position_size || undefined,
+      leverage: form.leverage,
+      stop_loss: form.stop_loss || undefined,
+      take_profit: form.take_profit || undefined,
+      risk_amount: form.risk_amount || undefined,
+      risk_percent: form.risk_percent || undefined,
+      fee: form.fee,
+      funding_fee: form.funding_fee,
+      gross_pnl: form.gross_pnl || undefined,
+      net_pnl: form.net_pnl || undefined,
+      result: form.result || undefined,
+      market_condition: form.market_condition || undefined,
+      setup_type: form.setup_type || undefined,
+      timeframe: form.timeframe || undefined,
+      entry_reason: form.entry_reason || undefined,
+      exit_reason: form.exit_reason || undefined,
+      mistake_notes: form.mistake_notes || undefined,
+      lesson_learned: form.lesson_learned || undefined,
+    })
+
+    if (!zodResult.success) {
+      const firstError = zodResult.error.errors[0]
+      toast.error(`Validasi gagal: ${firstError.message}`)
+      return
+    }
+
     setSaving(true)
 
     const supabase = createClient()
@@ -382,7 +447,7 @@ export default function TradeForm({ trade, userId, mode }: Props) {
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2">
-              <div className="text-3xl">📸</div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-8 h-8 text-gray-500"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
               <p className="text-gray-400 text-sm font-medium">Klik untuk upload screenshot</p>
               <p className="text-gray-600 text-xs">PNG, JPG, WEBP • Max 5MB per file • Max 5 gambar</p>
             </div>
