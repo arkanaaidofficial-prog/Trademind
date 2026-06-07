@@ -57,7 +57,7 @@ export default function BotPage() {
           <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a2a3a]">
               <h2 className="text-white font-bold">Tambah Bot</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-white text-xl">✕</button>
+              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-white text-xl">×</button>
             </div>
             <div className="p-6 space-y-4">
               <div><label className={lbl}>Nama Bot *</label><input className={inp} value={form.name} onChange={e => set('name', e.target.value)} placeholder="OMAD SNIPER" /></div>
@@ -86,7 +86,7 @@ export default function BotPage() {
 
       {bots.length === 0 ? (
         <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl flex flex-col items-center py-16 gap-3">
-          <p className="text-4xl">🤖</p>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-12 h-12 text-gray-600"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 15h.01M16 15h.01"/></svg>
           <p className="text-gray-400 text-sm">Belum ada bot terdaftar</p>
           <button onClick={() => setShowForm(true)} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors">Tambah Bot Pertama</button>
         </div>
@@ -97,7 +97,7 @@ export default function BotPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-white font-bold text-sm">🤖 {b.name}</span>
+                    <span className="text-white font-bold text-sm">{b.name}</span>
                     {b.version && <span className="text-xs bg-[#1e1e2e] text-gray-400 px-2 py-0.5 rounded-lg">{b.version}</span>}
                   </div>
                   <p className="text-gray-500 text-xs mt-0.5">{b.exchange ?? '—'} · {b.strategy ?? '—'}</p>

@@ -143,10 +143,10 @@ export default function RulesPage() {
           {rules.entry_checklist.map((item, i) => (
             <div key={i} className="flex items-center gap-3 p-3 bg-[#1a1a2a] rounded-xl group">
               <div className="w-5 h-5 rounded border border-blue-500/50 flex items-center justify-center flex-shrink-0">
-                <span className="text-blue-400 text-xs">✓</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3 h-3 text-blue-400"><polyline points="20 6 9 17 4 12"/></svg>
               </div>
               <span className="text-gray-300 text-sm flex-1">{item}</span>
-              <button onClick={() => removeChecklist(i)} className="text-gray-600 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-all">✕</button>
+              <button onClick={() => removeChecklist(i)} className="text-gray-600 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-all">×</button>
             </div>
           ))}
         </div>
@@ -159,7 +159,7 @@ export default function RulesPage() {
 
       <button onClick={handleSave} disabled={saving}
         className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white py-3 rounded-xl text-sm font-bold transition-colors">
-        {saving ? 'Menyimpan...' : '💾 Simpan Trading Rules'}
+        {saving ? 'Menyimpan...' : 'Simpan Trading Rules'}
       </button>
     </div>
   )

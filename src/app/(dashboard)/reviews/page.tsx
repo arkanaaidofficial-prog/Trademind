@@ -73,7 +73,7 @@ export default function ReviewsPage() {
           <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl w-full max-w-xl max-h-[90vh] overflow-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a2a3a] sticky top-0 bg-[#14141e]">
               <h2 className="text-white font-bold">Buat Review</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-white text-xl">✕</button>
+              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-white text-xl">×</button>
             </div>
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-3 gap-2">
@@ -88,12 +88,12 @@ export default function ReviewsPage() {
                 <div><label className={lbl}>Dari</label><input type="date" className={inp} value={form.period_start} onChange={e => set('period_start', e.target.value)} /></div>
                 <div><label className={lbl}>Sampai</label><input type="date" className={inp} value={form.period_end} onChange={e => set('period_end', e.target.value)} /></div>
               </div>
-              <div><label className={lbl}>✅ Apa yang berjalan baik?</label><textarea className={ta} rows={2} value={form.what_worked} onChange={e => set('what_worked', e.target.value)} /></div>
-              <div><label className={lbl}>❌ Kesalahan terbesar?</label><textarea className={ta} rows={2} value={form.biggest_mistake} onChange={e => set('biggest_mistake', e.target.value)} /></div>
-              <div><label className={lbl}>💡 Pelajaran utama?</label><textarea className={ta} rows={2} value={form.main_lesson} onChange={e => set('main_lesson', e.target.value)} /></div>
-              <div><label className={lbl}>▶️ Strategi yang dilanjutkan?</label><textarea className={ta} rows={1} value={form.strategy_continue} onChange={e => set('strategy_continue', e.target.value)} /></div>
-              <div><label className={lbl}>⏹️ Strategi yang dihentikan?</label><textarea className={ta} rows={1} value={form.strategy_stop} onChange={e => set('strategy_stop', e.target.value)} /></div>
-              <div><label className={lbl}>🚀 Rencana perbaikan?</label><textarea className={ta} rows={2} value={form.improvement_plan} onChange={e => set('improvement_plan', e.target.value)} /></div>
+              <div><label className={lbl}>Apa yang berjalan baik?</label><textarea className={ta} rows={2} value={form.what_worked} onChange={e => set('what_worked', e.target.value)} /></div>
+              <div><label className={lbl}>Kesalahan terbesar?</label><textarea className={ta} rows={2} value={form.biggest_mistake} onChange={e => set('biggest_mistake', e.target.value)} /></div>
+              <div><label className={lbl}>Pelajaran utama?</label><textarea className={ta} rows={2} value={form.main_lesson} onChange={e => set('main_lesson', e.target.value)} /></div>
+              <div><label className={lbl}>▶ Strategi yang dilanjutkan?</label><textarea className={ta} rows={1} value={form.strategy_continue} onChange={e => set('strategy_continue', e.target.value)} /></div>
+              <div><label className={lbl}>■ Strategi yang dihentikan?</label><textarea className={ta} rows={1} value={form.strategy_stop} onChange={e => set('strategy_stop', e.target.value)} /></div>
+              <div><label className={lbl}>Rencana perbaikan?</label><textarea className={ta} rows={2} value={form.improvement_plan} onChange={e => set('improvement_plan', e.target.value)} /></div>
               <div className="flex items-center gap-3">
                 <label className="text-gray-400 text-xs">Risk management dipatuhi?</label>
                 <input type="checkbox" className="accent-blue-500 w-4 h-4" checked={form.risk_management_ok} onChange={e => set('risk_management_ok', e.target.checked)} />
@@ -116,7 +116,7 @@ export default function ReviewsPage() {
       {/* Review List */}
       {reviews.length === 0 ? (
         <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl flex flex-col items-center py-16 gap-3">
-          <p className="text-4xl">📝</p>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-12 h-12 text-gray-600"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           <p className="text-gray-400 text-sm">Belum ada review</p>
           <button onClick={() => setShowForm(true)} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors">Buat Review Pertama</button>
         </div>
@@ -136,15 +136,15 @@ export default function ReviewsPage() {
                 {r.overall_rating && (
                   <div className="flex items-center gap-1">
                     <span className="text-amber-400 text-xs font-bold">{r.overall_rating}/10</span>
-                    <span className="text-amber-400 text-sm">★</span>
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-amber-400 inline"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                   </div>
                 )}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {r.what_worked && <div><p className="text-gray-500 text-xs mb-1">✅ Yang Berhasil</p><p className="text-gray-300 text-sm">{r.what_worked}</p></div>}
-                {r.biggest_mistake && <div><p className="text-gray-500 text-xs mb-1">❌ Kesalahan Terbesar</p><p className="text-red-300 text-sm">{r.biggest_mistake}</p></div>}
-                {r.main_lesson && <div><p className="text-gray-500 text-xs mb-1">💡 Pelajaran</p><p className="text-emerald-300 text-sm">{r.main_lesson}</p></div>}
-                {r.improvement_plan && <div><p className="text-gray-500 text-xs mb-1">🚀 Rencana</p><p className="text-gray-300 text-sm">{r.improvement_plan}</p></div>}
+                {r.what_worked && <div><p className="text-gray-500 text-xs mb-1">Yang Berhasil</p><p className="text-gray-300 text-sm">{r.what_worked}</p></div>}
+                {r.biggest_mistake && <div><p className="text-gray-500 text-xs mb-1">— Kesalahan Terbesar</p><p className="text-red-300 text-sm">{r.biggest_mistake}</p></div>}
+                {r.main_lesson && <div><p className="text-gray-500 text-xs mb-1">Pelajaran</p><p className="text-emerald-300 text-sm">{r.main_lesson}</p></div>}
+                {r.improvement_plan && <div><p className="text-gray-500 text-xs mb-1">Rencana</p><p className="text-gray-300 text-sm">{r.improvement_plan}</p></div>}
               </div>
             </div>
           ))}

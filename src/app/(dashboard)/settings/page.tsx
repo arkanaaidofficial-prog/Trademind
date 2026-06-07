@@ -143,10 +143,10 @@ export default function SettingsPage() {
   )
 
   const tabs = [
-    { key: 'profile', label: '👤 Profil' },
-    { key: 'trading', label: '📊 Trading' },
-    { key: 'account', label: '💰 Akun' },
-    { key: 'security', label: '🔒 Keamanan' },
+    { key: 'profile', label: 'Profil' },
+    { key: 'trading', label: 'Trading' },
+    { key: 'account', label: 'Akun' },
+    { key: 'security', label: 'Keamanan' },
   ] as const
 
   const initials = profile.full_name?.charAt(0)?.toUpperCase() ?? user?.email?.charAt(0)?.toUpperCase() ?? 'T'
@@ -283,7 +283,7 @@ export default function SettingsPage() {
             </div>
           </div>
           <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
-            <p className="text-blue-400 text-xs font-medium">💡 Tips Manajemen Risiko</p>
+            <p className="text-blue-400 text-xs font-medium">Tips Manajemen Risiko</p>
             <p className="text-gray-400 text-[11px] mt-1 leading-relaxed">
               Trader profesional umumnya risk 1–2% per trade. Dengan balance ${profile.account_balance ?? 1000},
               risk {profile.risk_per_trade ?? 2}% per trade = <strong className="text-gray-200">
@@ -316,7 +316,7 @@ export default function SettingsPage() {
       {activeTab !== 'security' && (
         <button onClick={handleSave} disabled={saving}
           className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white py-3 rounded-xl text-sm font-bold transition-colors">
-          {saving ? 'Menyimpan...' : '💾 Simpan Perubahan'}
+          {saving ? 'Menyimpan...' : 'Simpan Perubahan'}
         </button>
       )}
     </div>

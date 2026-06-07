@@ -108,7 +108,7 @@ export default function TradesPage() {
       {/* Table */}
       {filtered.length === 0 ? (
         <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl flex flex-col items-center justify-center py-16 gap-3">
-          <p className="text-3xl">📋</p>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-12 h-12 text-gray-600"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
           <p className="text-gray-400 text-sm">Belum ada trade yang cocok</p>
           <Link href="/trades/new" className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors">+ Add Trade</Link>
         </div>

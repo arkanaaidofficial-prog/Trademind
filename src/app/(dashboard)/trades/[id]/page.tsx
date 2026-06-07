@@ -119,10 +119,10 @@ export default function TradeDetailPage() {
           <Row label="Emosi Sebelum Entry" value={psych.emotion_before} />
           <Row label="Skor Disiplin" value={psych.discipline_score ? `${psych.discipline_score}/10` : null} />
           <Row label="Kualitas Setup" value={psych.setup_quality_score ? `${psych.setup_quality_score}/10` : null} />
-          <Row label="Sesuai Plan Entry" value={psych.followed_plan_entry !== null ? (psych.followed_plan_entry ? '✅ Ya' : '❌ Tidak') : null} />
-          <Row label="Sesuai Plan Exit" value={psych.followed_plan_exit !== null ? (psych.followed_plan_exit ? '✅ Ya' : '❌ Tidak') : null} />
-          <Row label="Revenge Trade" value={psych.revenge_trade ? '⚠️ Ya' : '✅ Tidak'} />
-          <Row label="Oversized" value={psych.oversized ? '⚠️ Ya' : '✅ Tidak'} />
+          <Row label="Sesuai Plan Entry" value={psych.followed_plan_entry !== null ? (psych.followed_plan_entry ? 'Ya Ya' : 'Tidak Tidak') : null} />
+          <Row label="Sesuai Plan Exit" value={psych.followed_plan_exit !== null ? (psych.followed_plan_exit ? 'Ya Ya' : 'Tidak Tidak') : null} />
+          <Row label="Revenge Trade" value={psych.revenge_trade ? 'Ya' : 'Tidak'} />
+          <Row label="Oversized" value={psych.oversized ? 'Ya' : 'Tidak'} />
           {psych.notes && <div className="pt-2"><p className="text-gray-500 text-xs mb-1">Catatan</p><p className="text-gray-300 text-sm">{psych.notes}</p></div>}
         </div>
       )}
