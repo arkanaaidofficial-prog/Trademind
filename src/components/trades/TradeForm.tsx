@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
@@ -20,9 +20,16 @@ interface Props {
   mode: 'add' | 'edit'
 }
 
+type ScreenshotItem = { url: string; name: string }
+
 export default function TradeForm({ trade, userId, mode }: Props) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
+  const [screenshots, setScreenshots] = useState<ScreenshotItem[]>(
+    (trade as { screenshots?: ScreenshotItem[] })?.screenshots ?? []
+  )
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState({
     symbol: trade?.symbol ?? '',
@@ -70,6 +77,45 @@ export default function TradeForm({ trade, userId, mode }: Props) {
     setForm(f => ({ ...f, [key]: value }))
   }
 
+  async function handleScreenshotUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    if (!files.length) return
+    if (screenshots.length + files.length > 5) {
+      toast.error('Maksimal 5 screenshot per trade')
+      return
+    }
+    setUploading(true)
+    const supabase = createClient()
+    const uploaded: ScreenshotItem[] = []
+
+    for (const file of files) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(`${file.name} terlalu besar (max 5MB)`)
+        continue
+      }
+      const ext = file.name.split('.').pop()
+      const path = `screenshots/${userId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+      const { error } = await supabase.storage
+        .from('trade-screenshots')
+        .upload(path, file, { upsert: false })
+      if (error) {
+        toast.error(`Gagal upload ${file.name}: ${error.message}`)
+        continue
+      }
+      const { data: urlData } = supabase.storage.from('trade-screenshots').getPublicUrl(path)
+      uploaded.push({ url: urlData.publicUrl, name: file.name })
+    }
+
+    setScreenshots(prev => [...prev, ...uploaded])
+    if (uploaded.length) toast.success(`${uploaded.length} screenshot berhasil diupload!`)
+    setUploading(false)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  function removeScreenshot(idx: number) {
+    setScreenshots(prev => prev.filter((_, i) => i !== idx))
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.symbol || !form.entry_price || !form.position_type) {
@@ -112,6 +158,7 @@ export default function TradeForm({ trade, userId, mode }: Props) {
       exit_reason: form.exit_reason || null,
       mistake_notes: form.mistake_notes || null,
       lesson_learned: form.lesson_learned || null,
+      screenshots: screenshots.length > 0 ? screenshots : null,
     }
 
     let tradeId = trade?.id
@@ -315,6 +362,65 @@ export default function TradeForm({ trade, userId, mode }: Props) {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Section: Screenshot */}
+      <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-4">
+        <h2 className="text-gray-200 font-semibold text-sm border-b border-[#2a2a3a] pb-3">Screenshot Chart</h2>
+        <p className="text-gray-500 text-xs">Upload bukti chart, setup, atau hasil trade kamu. Max 5 gambar, masing-masing max 5MB.</p>
+
+        {/* Upload area */}
+        <div
+          onClick={() => !uploading && fileRef.current?.click()}
+          className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
+            uploading ? 'border-blue-500/50 bg-blue-500/5' : 'border-[#2a2a3a] hover:border-blue-500/50 hover:bg-blue-500/5'
+          }`}>
+          {uploading ? (
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+              <p className="text-blue-400 text-xs">Mengupload...</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-3xl">📸</div>
+              <p className="text-gray-400 text-sm font-medium">Klik untuk upload screenshot</p>
+              <p className="text-gray-600 text-xs">PNG, JPG, WEBP • Max 5MB per file • Max 5 gambar</p>
+            </div>
+          )}
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={handleScreenshotUpload}
+        />
+
+        {/* Preview grid */}
+        {screenshots.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {screenshots.map((sc, idx) => (
+              <div key={idx} className="relative group rounded-xl overflow-hidden border border-[#2a2a3a] aspect-video bg-[#1a1a2a]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={sc.url} alt={sc.name} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  <a href={sc.url} target="_blank" rel="noopener noreferrer"
+                    className="bg-white/20 hover:bg-white/30 text-white text-xs px-2 py-1 rounded-lg transition-colors">
+                    Lihat
+                  </a>
+                  <button type="button" onClick={() => removeScreenshot(idx)}
+                    className="bg-red-500/60 hover:bg-red-500 text-white text-xs px-2 py-1 rounded-lg transition-colors">
+                    Hapus
+                  </button>
+                </div>
+                <div className="absolute bottom-0 inset-x-0 bg-black/70 px-2 py-1">
+                  <p className="text-white text-[9px] truncate">{sc.name}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Section: Notes */}
