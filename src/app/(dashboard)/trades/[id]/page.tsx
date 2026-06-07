@@ -5,22 +5,45 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import type { Trade, TradePsychology } from '@/types/trade'
+import { Icons } from '@/components/ui/Icons'
 
-function Row({ label, value, mono = false }: { label: string; value?: string | number | null; mono?: boolean }) {
+function Row({ label, value, mono = false, valueColor }: {
+  label: string
+  value?: string | number | null
+  mono?: boolean
+  valueColor?: string
+}) {
   return (
-    <div className="flex justify-between items-start py-2.5 border-b border-[#1e1e2e] last:border-0">
-      <span className="text-gray-400 text-xs">{label}</span>
-      <span className={`text-gray-200 text-xs font-medium text-right max-w-[60%] ${mono ? 'font-mono' : ''}`}>{value ?? '—'}</span>
+    <div className="flex justify-between items-start py-2.5 border-b border-[#1e1e2e] last:border-0 gap-4">
+      <span className="text-gray-500 text-xs flex-shrink-0">{label}</span>
+      <span className={`text-xs font-medium text-right ${mono ? 'font-mono' : ''} ${valueColor ?? 'text-gray-200'}`}>
+        {value ?? '—'}
+      </span>
+    </div>
+  )
+}
+
+function PsychRow({ label, value, type }: { label: string; value: boolean | null | undefined; type: 'positive' | 'negative' }) {
+  if (value === null || value === undefined) return <Row label={label} value={null} />
+  const isGood = type === 'positive' ? value : !value
+  return (
+    <div className="flex justify-between items-center py-2.5 border-b border-[#1e1e2e] last:border-0 gap-4">
+      <span className="text-gray-500 text-xs flex-shrink-0">{label}</span>
+      <div className={`flex items-center gap-1 text-xs font-medium ${isGood ? 'text-emerald-400' : 'text-red-400'}`}>
+        {isGood ? <Icons.Check /> : <Icons.Warn />}
+        <span>{value ? 'Ya' : 'Tidak'}</span>
+      </div>
     </div>
   )
 }
 
 export default function TradeDetailPage() {
-  const { id } = useParams<{ id: string }>()
-  const router = useRouter()
-  const [trade, setTrade] = useState<Trade | null>(null)
-  const [psych, setPsych] = useState<TradePsychology | null>(null)
+  const { id }   = useParams<{ id: string }>()
+  const router   = useRouter()
+  const [trade,  setTrade]  = useState<Trade | null>(null)
+  const [psych,  setPsych]  = useState<TradePsychology | null>(null)
   const [loading, setLoading] = useState(true)
+  const [screenshots, setScreenshots] = useState<{ url: string; name: string }[]>([])
 
   useEffect(() => {
     async function load() {
@@ -29,6 +52,10 @@ export default function TradeDetailPage() {
       const { data: p } = await supabase.from('trade_psychology').select('*').eq('trade_id', id).single()
       setTrade(t)
       setPsych(p)
+      // screenshots stored as jsonb in trades.screenshots column
+      if (t?.screenshots && Array.isArray(t.screenshots)) {
+        setScreenshots(t.screenshots as { url: string; name: string }[])
+      }
       setLoading(false)
     }
     load()
@@ -37,15 +64,24 @@ export default function TradeDetailPage() {
   async function handleDelete() {
     if (!confirm('Hapus trade ini? Tidak bisa dikembalikan.')) return
     const supabase = createClient()
-    await supabase.from('trades').delete().eq('id', id)
+    const { error } = await supabase.from('trades').delete().eq('id', id)
+    if (error) { toast.error('Gagal menghapus trade'); return }
     toast.success('Trade dihapus')
     router.push('/trades')
   }
 
   if (loading) return <div className="flex items-center justify-center h-full"><p className="text-gray-400 animate-pulse text-sm">Memuat...</p></div>
-  if (!trade) return <div className="flex items-center justify-center h-full"><p className="text-gray-400 text-sm">Trade tidak ditemukan</p></div>
+  if (!trade)  return <div className="flex items-center justify-center h-full"><p className="text-gray-400 text-sm">Trade tidak ditemukan</p></div>
 
-  const pnl = trade.net_pnl ?? 0
+  const pnl = Number(trade.net_pnl ?? 0)
+  const duration = trade.entry_at && trade.exit_at
+    ? (() => {
+        const mins = Math.round((new Date(trade.exit_at!).getTime() - new Date(trade.entry_at).getTime()) / 60000)
+        if (mins < 60) return `${mins}m`
+        if (mins < 1440) return `${Math.floor(mins/60)}h ${mins%60}m`
+        return `${Math.floor(mins/1440)}d ${Math.floor((mins%1440)/60)}h`
+      })()
+    : null
 
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-4">
@@ -54,21 +90,24 @@ export default function TradeDetailPage() {
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-white font-bold text-xl">{trade.symbol}</h1>
-            <span className={`text-xs font-bold px-2 py-1 rounded-lg ${trade.position_type === 'long' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+            <span className={`text-xs font-bold px-2 py-1 rounded-lg ${
+              trade.position_type === 'long' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+            }`}>
               {trade.position_type?.toUpperCase()}
             </span>
             <span className="text-xs bg-[#1e1e2e] text-gray-400 px-2 py-1 rounded-lg">{trade.mode}</span>
             {trade.result && (
               <span className={`text-xs font-bold px-2 py-1 rounded-lg border ${
-                trade.result === 'win' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                : trade.result === 'loss' ? 'bg-red-500/20 text-red-400 border-red-500/30'
-                : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                trade.result === 'win'  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                trade.result === 'loss' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                                          'bg-gray-500/20 text-gray-400 border-gray-500/30'
               }`}>{trade.result.toUpperCase()}</span>
             )}
           </div>
           <p className="text-gray-500 text-xs mt-1">
             {new Date(trade.entry_at).toLocaleString('id-ID')}
             {trade.exit_at && ` — ${new Date(trade.exit_at).toLocaleString('id-ID')}`}
+            {duration && <span className="ml-2 text-gray-600">· {duration}</span>}
           </p>
         </div>
         <div className="text-right flex-shrink-0">
@@ -81,62 +120,99 @@ export default function TradeDetailPage() {
 
       {/* Trade Details */}
       <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl p-4">
-        <h3 className="text-gray-300 text-xs font-semibold uppercase tracking-wider mb-3">Detail Trade</h3>
-        <Row label="Exchange" value={trade.exchange} />
-        <Row label="Strategy" value={trade.strategy_name} />
-        <Row label="Setup" value={trade.setup_type} />
-        <Row label="Timeframe" value={trade.timeframe} />
+        <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-3">Detail Trade</h3>
+        <Row label="Exchange"       value={trade.exchange} />
+        <Row label="Strategy"       value={trade.strategy_name} />
+        <Row label="Setup Type"     value={trade.setup_type} />
+        <Row label="Timeframe"      value={trade.timeframe} />
         <Row label="Market Condition" value={trade.market_condition} />
-        <Row label="Entry Price" value={Number(trade.entry_price).toLocaleString()} mono />
-        <Row label="Exit Price" value={trade.exit_price ? Number(trade.exit_price).toLocaleString() : null} mono />
-        <Row label="Position Size" value={trade.position_size} mono />
-        <Row label="Leverage" value={trade.leverage ? `${trade.leverage}x` : null} />
-        <Row label="Stop Loss" value={trade.stop_loss ? Number(trade.stop_loss).toLocaleString() : null} mono />
-        <Row label="Take Profit" value={trade.take_profit ? Number(trade.take_profit).toLocaleString() : null} mono />
-        <Row label="Risk Amount" value={trade.risk_amount ? `$${trade.risk_amount}` : null} mono />
-        <Row label="Risk %" value={trade.risk_percent ? `${trade.risk_percent}%` : null} />
-        <Row label="Gross P/L" value={trade.gross_pnl ? `$${trade.gross_pnl}` : null} mono />
-        <Row label="Fee" value={trade.fee ? `$${trade.fee}` : '$0'} mono />
-        <Row label="Funding Fee" value={trade.funding_fee ? `$${trade.funding_fee}` : '$0'} mono />
+        <Row label="Entry Price"    value={Number(trade.entry_price).toLocaleString()} mono />
+        <Row label="Exit Price"     value={trade.exit_price ? Number(trade.exit_price).toLocaleString() : null} mono />
+        <Row label="Position Size"  value={trade.position_size ?? null} mono />
+        <Row label="Leverage"       value={trade.leverage ? `${trade.leverage}x` : null} />
+        <Row label="Stop Loss"      value={trade.stop_loss ? Number(trade.stop_loss).toLocaleString() : null} mono />
+        <Row label="Take Profit"    value={trade.take_profit ? Number(trade.take_profit).toLocaleString() : null} mono />
+        <Row label="Risk Amount"    value={trade.risk_amount ? `$${trade.risk_amount}` : null} mono />
+        <Row label="Risk %"         value={trade.risk_percent ? `${trade.risk_percent}%` : null} />
+        <Row label="R:R Ratio"      value={trade.rr_ratio ?? null} mono />
+        <Row label="Gross P/L"      value={trade.gross_pnl ? `$${trade.gross_pnl}` : null} mono
+          valueColor={Number(trade.gross_pnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+        <Row label="Fee"            value={trade.fee ? `$${trade.fee}` : '$0'} mono />
+        <Row label="Funding Fee"    value={trade.funding_fee ? `$${trade.funding_fee}` : '$0'} mono />
+        <Row label="R-Multiple"     value={trade.r_multiple ?? null} mono />
         {trade.bot_name && <Row label="Bot" value={`${trade.bot_name} ${trade.bot_version ?? ''}`.trim()} />}
       </div>
 
       {/* Notes */}
       {(trade.entry_reason || trade.exit_reason || trade.mistake_notes || trade.lesson_learned) && (
         <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl p-4 space-y-3">
-          <h3 className="text-gray-300 text-xs font-semibold uppercase tracking-wider">Catatan</h3>
-          {trade.entry_reason && <div><p className="text-gray-500 text-xs mb-1">Alasan Entry</p><p className="text-gray-300 text-sm">{trade.entry_reason}</p></div>}
-          {trade.exit_reason && <div><p className="text-gray-500 text-xs mb-1">Alasan Exit</p><p className="text-gray-300 text-sm">{trade.exit_reason}</p></div>}
-          {trade.mistake_notes && <div><p className="text-gray-500 text-xs mb-1">Kesalahan</p><p className="text-red-300 text-sm">{trade.mistake_notes}</p></div>}
-          {trade.lesson_learned && <div><p className="text-gray-500 text-xs mb-1">Pelajaran</p><p className="text-emerald-300 text-sm">{trade.lesson_learned}</p></div>}
+          <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wider">Catatan</h3>
+          {trade.entry_reason   && <div><p className="text-gray-500 text-xs mb-1">Alasan Entry</p><p className="text-gray-300 text-sm leading-relaxed">{trade.entry_reason}</p></div>}
+          {trade.exit_reason    && <div><p className="text-gray-500 text-xs mb-1">Alasan Exit</p><p className="text-gray-300 text-sm leading-relaxed">{trade.exit_reason}</p></div>}
+          {trade.mistake_notes  && <div><p className="text-gray-500 text-xs mb-1">Kesalahan</p><p className="text-red-300 text-sm leading-relaxed">{trade.mistake_notes}</p></div>}
+          {trade.lesson_learned && <div><p className="text-gray-500 text-xs mb-1">Pelajaran</p><p className="text-emerald-300 text-sm leading-relaxed">{trade.lesson_learned}</p></div>}
+        </div>
+      )}
+
+      {/* Screenshots */}
+      {screenshots.length > 0 && (
+        <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl p-4">
+          <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-3">
+            Screenshot Chart ({screenshots.length})
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {screenshots.map((sc, i) => (
+              <a key={i} href={sc.url} target="_blank" rel="noopener noreferrer"
+                className="relative block rounded-xl overflow-hidden border border-[#2a2a3a] aspect-video bg-[#1a1a2a] group">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={sc.url} alt={sc.name} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <span className="text-white text-xs font-medium">Lihat</span>
+                </div>
+              </a>
+            ))}
+          </div>
         </div>
       )}
 
       {/* Psychology */}
       {psych && (
         <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl p-4">
-          <h3 className="text-gray-300 text-xs font-semibold uppercase tracking-wider mb-3">Psychology</h3>
-          <Row label="Emosi Sebelum Entry" value={psych.emotion_before} />
-          <Row label="Skor Disiplin" value={psych.discipline_score ? `${psych.discipline_score}/10` : null} />
-          <Row label="Kualitas Setup" value={psych.setup_quality_score ? `${psych.setup_quality_score}/10` : null} />
-          <Row label="Sesuai Plan Entry" value={psych.followed_plan_entry !== null ? (psych.followed_plan_entry ? 'Ya Ya' : 'Tidak Tidak') : null} />
-          <Row label="Sesuai Plan Exit" value={psych.followed_plan_exit !== null ? (psych.followed_plan_exit ? 'Ya Ya' : 'Tidak Tidak') : null} />
-          <Row label="Revenge Trade" value={psych.revenge_trade ? 'Ya' : 'Tidak'} />
-          <Row label="Oversized" value={psych.oversized ? 'Ya' : 'Tidak'} />
-          {psych.notes && <div className="pt-2"><p className="text-gray-500 text-xs mb-1">Catatan</p><p className="text-gray-300 text-sm">{psych.notes}</p></div>}
+          <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-3">Psychology Journal</h3>
+          <Row label="Emosi Sebelum Entry"  value={psych.emotion_before} />
+          <Row label="Emosi Saat Berjalan"  value={psych.emotion_during} />
+          <Row label="Emosi Setelah Exit"   value={psych.emotion_after} />
+          <Row label="Skor Disiplin"        value={psych.discipline_score     ? `${psych.discipline_score}/10`     : null} />
+          <Row label="Kualitas Setup"       value={psych.setup_quality_score  ? `${psych.setup_quality_score}/10`  : null} />
+          <PsychRow label="Sesuai Plan Entry"  value={psych.followed_plan_entry}  type="positive" />
+          <PsychRow label="Sesuai Plan Exit"   value={psych.followed_plan_exit}   type="positive" />
+          <PsychRow label="Revenge Trade"      value={psych.revenge_trade}        type="negative" />
+          <PsychRow label="Oversized Position" value={psych.oversized}            type="negative" />
+          <PsychRow label="SL Dipindah Tanpa Alasan" value={psych.moved_sl_invalid} type="negative" />
+          <PsychRow label="TP Dipindah Karena Emosi" value={psych.moved_tp_emotion} type="negative" />
+          {psych.notes && (
+            <div className="pt-2">
+              <p className="text-gray-500 text-xs mb-1">Catatan Psychology</p>
+              <p className="text-gray-300 text-sm leading-relaxed">{psych.notes}</p>
+            </div>
+          )}
         </div>
       )}
 
       {/* Actions */}
       <div className="flex gap-3 pb-6">
-        <Link href="/trades" className="flex-1 bg-[#1e1e2e] hover:bg-[#2a2a3a] text-gray-300 py-3 rounded-xl text-sm font-medium transition-colors text-center">
-          ← Kembali
+        <Link href="/trades"
+          className="flex-1 flex items-center justify-center gap-2 bg-[#1e1e2e] hover:bg-[#2a2a3a] text-gray-300 py-3 rounded-xl text-sm font-medium transition-colors">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Kembali
         </Link>
-        <Link href={`/trades/${id}/edit`} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl text-sm font-bold transition-colors text-center">
-          Edit Trade
+        <Link href={`/trades/${id}/edit`}
+          className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl text-sm font-bold transition-colors">
+          <Icons.Edit /> Edit Trade
         </Link>
-        <button onClick={handleDelete} className="px-4 bg-red-600/20 hover:bg-red-600/30 border border-red-600/30 text-red-400 py-3 rounded-xl text-sm font-medium transition-colors">
-          Hapus
+        <button onClick={handleDelete}
+          className="flex items-center gap-2 px-4 bg-red-600/20 hover:bg-red-600/30 border border-red-600/30 text-red-400 py-3 rounded-xl text-sm font-medium transition-colors">
+          <Icons.Trash /> Hapus
         </button>
       </div>
     </div>
