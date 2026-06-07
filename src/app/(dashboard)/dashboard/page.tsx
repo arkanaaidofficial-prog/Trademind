@@ -89,7 +89,7 @@ export default function DashboardPage() {
 
   if (trades.length === 0) return (
     <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
-      <p className="text-5xl">📊</p>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-12 h-12 text-gray-600"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       <h2 className="text-white font-bold text-xl">Belum ada trade</h2>
       <p className="text-gray-400 text-sm text-center max-w-xs">Mulai dengan menambahkan trade pertama kamu untuk melihat dashboard performa.</p>
       <Link href="/trades/new" className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition-colors">+ Tambah Trade Pertama</Link>
@@ -109,18 +109,18 @@ export default function DashboardPage() {
 
       {/* Stats Row 1 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Net P/L" value={`${stats.net_pnl >= 0 ? '+' : ''}$${stats.net_pnl}`} sub={`Gross: $${stats.gross_pnl}`} color={stats.net_pnl >= 0 ? 'green' : 'red'} icon="💰" />
-        <StatCard label="Win Rate" value={`${stats.win_rate}%`} sub={`${stats.winning_trades}W / ${stats.losing_trades}L`} color="blue" icon="🎯" />
-        <StatCard label="Profit Factor" value={stats.profit_factor === Infinity ? '∞' : stats.profit_factor} sub={`Expectancy: $${stats.expectancy}`} color="gold" icon="⚡" />
-        <StatCard label="Total Trades" value={stats.total_trades} sub={`Fee: $${stats.total_fee}`} icon="📊" />
+        <StatCard label="Net P/L" value={`${stats.net_pnl >= 0 ? '+' : ''}$${stats.net_pnl}`} sub={`Gross: $${stats.gross_pnl}`} color={stats.net_pnl >= 0 ? 'green' : 'red'} icon="money" />
+        <StatCard label="Win Rate" value={`${stats.win_rate}%`} sub={`${stats.winning_trades}W / ${stats.losing_trades}L`} color="blue" icon="target" />
+        <StatCard label="Profit Factor" value={stats.profit_factor === Infinity ? '∞' : stats.profit_factor} sub={`Expectancy: $${stats.expectancy}`} color="gold" icon="flash" />
+        <StatCard label="Total Trades" value={stats.total_trades} sub={`Fee: $${stats.total_fee}`} icon="chart" />
       </div>
 
       {/* Stats Row 2 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Avg Win" value={`+$${stats.avg_win}`} color="green" icon="📈" />
-        <StatCard label="Avg Loss" value={`-$${stats.avg_loss}`} color="red" icon="📉" />
-        <StatCard label="Best Trade" value={`+$${stats.best_trade_pnl}`} sub={stats.best_pair} color="green" icon="🏆" />
-        <StatCard label="Max Drawdown" value={`-$${stats.max_drawdown}`} color="red" icon="📉" />
+        <StatCard label="Avg Win" value={`+$${stats.avg_win}`} color="green" icon="up" />
+        <StatCard label="Avg Loss" value={`-$${stats.avg_loss}`} color="red" icon="down" />
+        <StatCard label="Best Trade" value={`+$${stats.best_trade_pnl}`} sub={stats.best_pair} color="green" icon="trophy" />
+        <StatCard label="Max Drawdown" value={`-$${stats.max_drawdown}`} color="red" icon="down" />
       </div>
 
       {/* Charts Row */}
