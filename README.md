@@ -33,9 +33,19 @@ cp .env.example .env.local
 # Jalankan schema di Supabase SQL Editor
 # Buka: supabase/schema.sql → copy → paste di Supabase Dashboard > SQL Editor > Run
 
+# Jika sudah pernah upload screenshot sebelum private storage patch,
+# jalankan juga supabase/storage-legacy-path-policy.sql agar path lama tetap bisa dibaca.
+
 # Dev server
 npm run dev
 ```
+
+## Storage Security
+
+- Bucket `trade-screenshots` dibuat private oleh `supabase/schema.sql`.
+- Screenshot trade disimpan sebagai storage path, bukan public URL permanen.
+- Aplikasi membuat signed URL sementara saat preview/detail trade dibuka.
+- Bucket `avatars` dibuat public khusus untuk foto profil.
 
 ## Struktur Project
 
