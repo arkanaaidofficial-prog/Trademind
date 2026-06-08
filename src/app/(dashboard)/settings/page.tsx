@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { AVATARS_BUCKET } from '@/lib/supabase/storage'
 import { toast } from 'sonner'
 
 const inp = 'w-full bg-[#1a1a2a] border border-[#2a2a3a] text-gray-200 text-sm px-3 py-2.5 rounded-xl focus:outline-none focus:border-blue-500 transition-colors placeholder:text-gray-600'
@@ -74,11 +75,11 @@ export default function SettingsPage() {
 
     setUploadingAvatar(true)
     const supabase = createClient()
-    const ext = file.name.split('.').pop()
-    const path = `avatars/${user.id}.${ext}`
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase()
+    const path = `${user.id}/avatar.${ext}`
 
     const { error: uploadErr } = await supabase.storage
-      .from('trade-screenshots')
+      .from(AVATARS_BUCKET)
       .upload(path, file, { upsert: true })
 
     if (uploadErr) {
@@ -87,7 +88,7 @@ export default function SettingsPage() {
       return
     }
 
-    const { data: urlData } = supabase.storage.from('trade-screenshots').getPublicUrl(path)
+    const { data: urlData } = supabase.storage.from(AVATARS_BUCKET).getPublicUrl(path)
     set('avatar_url', urlData.publicUrl)
     setUploadingAvatar(false)
     toast.success('Avatar berhasil diupload!')
