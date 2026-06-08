@@ -1,7 +1,14 @@
 'use client'
-import { useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import {
+  TRADE_SCREENSHOTS_BUCKET,
+  getScreenshotDisplayUrl,
+  getScreenshotStoragePath,
+  serializeScreenshots,
+  type StoredScreenshot,
+} from '@/lib/supabase/storage'
 import { tradeFormSchema } from '@/lib/validators/tradeSchema'
 import { toast } from 'sonner'
 import type { Trade } from '@/types/trade'
@@ -21,16 +28,38 @@ interface Props {
   mode: 'add' | 'edit'
 }
 
-type ScreenshotItem = { url: string; name: string }
+type ScreenshotItem = StoredScreenshot & { url: string; name: string }
 
 export default function TradeForm({ trade, userId, mode }: Props) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
-  const [screenshots, setScreenshots] = useState<ScreenshotItem[]>(
-    (trade as { screenshots?: ScreenshotItem[] })?.screenshots ?? []
-  )
+  const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([])
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const rawScreenshots = (trade as { screenshots?: StoredScreenshot[] } | undefined)?.screenshots ?? []
+    if (!rawScreenshots.length) {
+      setScreenshots([])
+      return
+    }
+
+    let active = true
+    async function loadScreenshotUrls() {
+      const supabase = createClient()
+      const prepared = await Promise.all(
+        rawScreenshots.map(async sc => ({
+          ...sc,
+          name: sc.name ?? 'screenshot',
+          url: await getScreenshotDisplayUrl(supabase, sc),
+        }))
+      )
+      if (active) setScreenshots(prepared.filter(sc => sc.url))
+    }
+
+    loadScreenshotUrls()
+    return () => { active = false }
+  }, [trade])
 
   const [form, setForm] = useState({
     symbol: trade?.symbol ?? '',
@@ -101,17 +130,23 @@ export default function TradeForm({ trade, userId, mode }: Props) {
         toast.error(`${file.name} bukan format gambar yang valid (PNG, JPG, WEBP, GIF)`)
         continue
       }
-      const ext = file.name.split('.').pop()
-      const path = `screenshots/${userId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+      const ext = (file.name.split('.').pop() || 'png').toLowerCase()
+      const path = `${userId}/screenshots/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
       const { error } = await supabase.storage
-        .from('trade-screenshots')
+        .from(TRADE_SCREENSHOTS_BUCKET)
         .upload(path, file, { upsert: false })
       if (error) {
         toast.error(`Gagal upload ${file.name}: ${error.message}`)
         continue
       }
-      const { data: urlData } = supabase.storage.from('trade-screenshots').getPublicUrl(path)
-      uploaded.push({ url: urlData.publicUrl, name: file.name })
+      const { data: signedData, error: signedError } = await supabase.storage
+        .from(TRADE_SCREENSHOTS_BUCKET)
+        .createSignedUrl(path, 60 * 60)
+      if (signedError || !signedData?.signedUrl) {
+        toast.error(`Gagal membuat preview ${file.name}`)
+        continue
+      }
+      uploaded.push({ path, url: signedData.signedUrl, name: file.name })
     }
 
     setScreenshots(prev => [...prev, ...uploaded])
@@ -123,14 +158,11 @@ export default function TradeForm({ trade, userId, mode }: Props) {
   async function removeScreenshot(idx: number) {
     const supabase = createClient()
     const sc = screenshots[idx]
+    const storagePath = getScreenshotStoragePath(sc)
 
-    // Hapus file dari Supabase Storage
-    const marker = 'trade-screenshots/'
-    const markerIdx = sc.url.indexOf(marker)
-    if (markerIdx !== -1) {
-      const storagePath = decodeURIComponent(sc.url.slice(markerIdx + marker.length))
+    if (storagePath) {
       const { error } = await supabase.storage
-        .from('trade-screenshots')
+        .from(TRADE_SCREENSHOTS_BUCKET)
         .remove([storagePath])
       if (error) {
         toast.error('Gagal menghapus file dari storage: ' + error.message)
@@ -190,6 +222,7 @@ export default function TradeForm({ trade, userId, mode }: Props) {
     setSaving(true)
 
     const supabase = createClient()
+    const storedScreenshots = serializeScreenshots(screenshots)
 
     const tradePayload = {
       user_id: userId,
@@ -223,7 +256,7 @@ export default function TradeForm({ trade, userId, mode }: Props) {
       exit_reason: form.exit_reason || null,
       mistake_notes: form.mistake_notes || null,
       lesson_learned: form.lesson_learned || null,
-      screenshots: screenshots.length > 0 ? screenshots : null,
+      screenshots: storedScreenshots,
     }
 
     let tradeId = trade?.id
