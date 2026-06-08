@@ -128,7 +128,10 @@ export async function getScreenshotUrl(path: string, expiresIn = 60 * 60) {
     .from(TRADE_SCREENSHOTS_BUCKET)
     .createSignedUrl(path, expiresIn);
 
-  if (error) throw error;
+  if (error || !data?.signedUrl) {
+    throw error ?? new Error('Failed to create screenshot signed URL');
+  }
+
   return data.signedUrl;
 }
 
