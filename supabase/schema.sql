@@ -1,11 +1,11 @@
 -- =====================================================
--- TradeMind Journal — Complete Supabase Schema
--- Run ONCE in: Supabase Dashboard > SQL Editor > Run All
+-- TradeMind Journal - Complete Supabase Schema
+-- Run once in: Supabase Dashboard > SQL Editor > Run All
 -- =====================================================
 
 create extension if not exists "pgcrypto";
 
--- ─── PROFILES ─────────────────────────────────────────────────
+-- PROFILES
 create table profiles (
   id                uuid primary key references auth.users(id) on delete cascade,
   username          text unique,
@@ -14,15 +14,15 @@ create table profiles (
   bio               text,
   trading_style     text,
   preferred_market  text,
-  timezone          text    default 'Asia/Jakarta',
-  currency          text    default 'USD',
+  timezone          text default 'Asia/Jakarta',
+  currency          text default 'USD',
   account_balance   numeric(20,2) default 10000,
   risk_per_trade    numeric(5,2),
   created_at        timestamptz default now(),
   updated_at        timestamptz default now()
 );
 
--- ─── STRATEGIES ───────────────────────────────────────────────
+-- STRATEGIES
 create table strategies (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null references profiles(id) on delete cascade,
@@ -33,7 +33,7 @@ create table strategies (
   created_at  timestamptz default now()
 );
 
--- ─── BOT CONFIGS ──────────────────────────────────────────────
+-- BOT CONFIGS
 create table bot_configs (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null references profiles(id) on delete cascade,
@@ -49,24 +49,21 @@ create table bot_configs (
   updated_at  timestamptz default now()
 );
 
--- ─── TRADES ───────────────────────────────────────────────────
+-- TRADES
 create table trades (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null references profiles(id) on delete cascade,
 
-  -- Classification
   market_type   text check (market_type in ('crypto','forex','saham','futures','other')) default 'crypto',
   exchange      text,
   symbol        text not null,
   position_type text check (position_type in ('long','short')) not null,
   mode          text check (mode in ('manual','bot','copytrade','signal')) default 'manual',
 
-  -- Bot
   bot_id        uuid references bot_configs(id) on delete set null,
   bot_name      text,
   bot_version   text,
 
-  -- Strategy
   strategy_id   uuid references strategies(id) on delete set null,
   strategy_name text,
   setup_type    text check (setup_type in (
@@ -74,21 +71,17 @@ create table trades (
                   'scalping','news','range','other')),
   timeframe     text check (timeframe in ('1m','5m','15m','30m','1H','4H','1D','1W')),
 
-  -- Timing
   entry_at         timestamptz not null default now(),
   exit_at          timestamptz,
   duration_minutes integer,
 
-  -- Price
   entry_price   numeric(20,8) not null,
   exit_price    numeric(20,8),
 
-  -- Sizing
   position_size numeric(20,8),
   leverage      numeric(5,2) default 1,
   margin_used   numeric(20,8),
 
-  -- Risk
   stop_loss     numeric(20,8),
   take_profit   numeric(20,8),
   risk_amount   numeric(20,8),
@@ -96,7 +89,6 @@ create table trades (
   reward_target numeric(20,8),
   rr_ratio      numeric(8,2),
 
-  -- Financials
   fee           numeric(20,8) default 0,
   funding_fee   numeric(20,8) default 0,
   gross_pnl     numeric(20,8),
@@ -104,7 +96,6 @@ create table trades (
   result        text check (result in ('win','loss','breakeven')),
   r_multiple    numeric(8,2),
 
-  -- Context
   market_condition text check (market_condition in (
                      'trending','ranging','volatile','low_volume','high_volume')),
   entry_reason  text,
@@ -113,18 +104,17 @@ create table trades (
   lesson_learned text,
   tags          text[] default '{}',
 
-  -- Screenshots stored inline as JSON (URL list)
-  -- [{url: string, name: string}]
+  -- Private screenshot references are stored as JSONB:
+  -- [{path: string, name: string, stage?: string, caption?: string}]
   screenshots   jsonb default '[]',
 
-  -- Rule violations
   rule_violations jsonb default '[]',
 
   created_at    timestamptz default now(),
   updated_at    timestamptz default now()
 );
 
--- ─── TRADE PSYCHOLOGY ─────────────────────────────────────────
+-- TRADE PSYCHOLOGY
 create table trade_psychology (
   id            uuid primary key default gen_random_uuid(),
   trade_id      uuid not null references trades(id) on delete cascade,
@@ -144,7 +134,7 @@ create table trade_psychology (
   revenge_trade       boolean default false,
   oversized           boolean default false,
 
-  discipline_score    integer check (discipline_score    between 1 and 10),
+  discipline_score    integer check (discipline_score between 1 and 10),
   setup_quality_score integer check (setup_quality_score between 1 and 10),
 
   notes       text,
@@ -153,7 +143,7 @@ create table trade_psychology (
   unique(trade_id)
 );
 
--- ─── TRADE SCREENSHOTS (relational — for future use) ──────────
+-- TRADE SCREENSHOTS (relational, for staged screenshot metadata)
 create table trade_screenshots (
   id           uuid primary key default gen_random_uuid(),
   trade_id     uuid not null references trades(id) on delete cascade,
@@ -164,13 +154,13 @@ create table trade_screenshots (
   created_at   timestamptz default now()
 );
 
--- ─── TRADING RULES ────────────────────────────────────────────
+-- TRADING RULES
 create table trading_rules (
   id                    uuid primary key default gen_random_uuid(),
   user_id               uuid not null references profiles(id) on delete cascade,
 
   max_risk_per_trade_pct numeric(5,2) default 2.0,
-  max_trades_per_day     integer      default 3,
+  max_trades_per_day     integer default 3,
   max_daily_loss         numeric(10,2),
   max_weekly_loss        numeric(10,2),
 
@@ -181,7 +171,6 @@ create table trading_rules (
   allowed_market_types  text[] default '{crypto}',
   allowed_strategy_ids  uuid[] default '{}',
 
-  -- [{id, text, required}]
   entry_checklist jsonb default '[]',
 
   created_at  timestamptz default now(),
@@ -190,7 +179,7 @@ create table trading_rules (
   unique(user_id)
 );
 
--- ─── REVIEWS ──────────────────────────────────────────────────
+-- REVIEWS
 create table reviews (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null references profiles(id) on delete cascade,
@@ -216,7 +205,7 @@ create table reviews (
   unique(user_id, period_type, period_start)
 );
 
--- ─── BOT LOGS ─────────────────────────────────────────────────
+-- BOT LOGS
 create table bot_logs (
   id                uuid primary key default gen_random_uuid(),
   bot_id            uuid not null references bot_configs(id) on delete cascade,
@@ -238,7 +227,7 @@ create table bot_logs (
   created_at timestamptz default now()
 );
 
--- ─── IMPORTS ──────────────────────────────────────────────────
+-- IMPORTS
 create table imports (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null references profiles(id) on delete cascade,
@@ -251,7 +240,7 @@ create table imports (
   created_at   timestamptz default now()
 );
 
--- ─── INDEXES ──────────────────────────────────────────────────
+-- INDEXES
 create index idx_trades_user_id        on trades(user_id);
 create index idx_trades_entry_at       on trades(entry_at desc);
 create index idx_trades_symbol         on trades(symbol);
@@ -264,7 +253,7 @@ create index idx_trade_ss_user_trade   on trade_screenshots(user_id, trade_id);
 create index idx_reviews_user_period   on reviews(user_id, period_type, period_start);
 create index idx_bot_logs_bot_id       on bot_logs(bot_id, log_date);
 
--- ─── ROW LEVEL SECURITY ───────────────────────────────────────
+-- ROW LEVEL SECURITY
 alter table profiles          enable row level security;
 alter table strategies        enable row level security;
 alter table trades            enable row level security;
@@ -276,18 +265,18 @@ alter table bot_configs       enable row level security;
 alter table bot_logs          enable row level security;
 alter table imports           enable row level security;
 
-create policy "profiles_own"          on profiles          for all using (auth.uid() = id)         with check (auth.uid() = id);
-create policy "strategies_own"        on strategies        for all using (auth.uid() = user_id)    with check (auth.uid() = user_id);
-create policy "trades_own"            on trades            for all using (auth.uid() = user_id)    with check (auth.uid() = user_id);
-create policy "trade_psychology_own"  on trade_psychology  for all using (auth.uid() = user_id)    with check (auth.uid() = user_id);
-create policy "trade_screenshots_own" on trade_screenshots for all using (auth.uid() = user_id)    with check (auth.uid() = user_id);
-create policy "trading_rules_own"     on trading_rules     for all using (auth.uid() = user_id)    with check (auth.uid() = user_id);
-create policy "reviews_own"           on reviews           for all using (auth.uid() = user_id)    with check (auth.uid() = user_id);
-create policy "bot_configs_own"       on bot_configs       for all using (auth.uid() = user_id)    with check (auth.uid() = user_id);
-create policy "bot_logs_own"          on bot_logs          for all using (auth.uid() = user_id)    with check (auth.uid() = user_id);
-create policy "imports_own"           on imports           for all using (auth.uid() = user_id)    with check (auth.uid() = user_id);
+create policy "profiles_own"          on profiles          for all using (auth.uid() = id)      with check (auth.uid() = id);
+create policy "strategies_own"        on strategies        for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "trades_own"            on trades            for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "trade_psychology_own"  on trade_psychology  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "trade_screenshots_own" on trade_screenshots for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "trading_rules_own"     on trading_rules     for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "reviews_own"           on reviews           for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "bot_configs_own"       on bot_configs       for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "bot_logs_own"          on bot_logs          for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "imports_own"           on imports           for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
--- ─── AUTO-CREATE PROFILE ON REGISTER ─────────────────────────
+-- AUTO-CREATE PROFILE ON REGISTER
 create or replace function handle_new_user()
 returns trigger as $$
 begin
@@ -305,9 +294,49 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure handle_new_user();
 
--- ─── STORAGE BUCKET SETUP ─────────────────────────────────────
--- 1. Buat bucket bernama: trade-screenshots
--- 2. Set bucket ke Public
--- 3. Tambah RLS policy di Storage > Policies:
---    Nama: "Users access own folder"
---    Policy: bucket_id = 'trade-screenshots' AND auth.uid()::text = (storage.foldername(name))[1]
+-- STORAGE BUCKETS
+insert into storage.buckets (id, name, public)
+values ('trade-screenshots', 'trade-screenshots', false)
+on conflict (id) do update set public = false;
+
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do update set public = true;
+
+-- Private trade screenshot objects. App paths start with the user id:
+-- {auth.uid()}/screenshots/{filename}
+create policy "trade_screenshots_select_own"
+  on storage.objects for select
+  using (bucket_id = 'trade-screenshots' and auth.uid()::text = (storage.foldername(name))[1]);
+
+create policy "trade_screenshots_insert_own"
+  on storage.objects for insert
+  with check (bucket_id = 'trade-screenshots' and auth.uid()::text = (storage.foldername(name))[1]);
+
+create policy "trade_screenshots_update_own"
+  on storage.objects for update
+  using (bucket_id = 'trade-screenshots' and auth.uid()::text = (storage.foldername(name))[1])
+  with check (bucket_id = 'trade-screenshots' and auth.uid()::text = (storage.foldername(name))[1]);
+
+create policy "trade_screenshots_delete_own"
+  on storage.objects for delete
+  using (bucket_id = 'trade-screenshots' and auth.uid()::text = (storage.foldername(name))[1]);
+
+-- Public avatar reads, owner-only writes. App paths start with the user id:
+-- {auth.uid()}/avatar.{ext}
+create policy "avatars_public_read"
+  on storage.objects for select
+  using (bucket_id = 'avatars');
+
+create policy "avatars_insert_own"
+  on storage.objects for insert
+  with check (bucket_id = 'avatars' and auth.uid()::text = (storage.foldername(name))[1]);
+
+create policy "avatars_update_own"
+  on storage.objects for update
+  using (bucket_id = 'avatars' and auth.uid()::text = (storage.foldername(name))[1])
+  with check (bucket_id = 'avatars' and auth.uid()::text = (storage.foldername(name))[1]);
+
+create policy "avatars_delete_own"
+  on storage.objects for delete
+  using (bucket_id = 'avatars' and auth.uid()::text = (storage.foldername(name))[1]);
