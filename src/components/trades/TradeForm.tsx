@@ -21,6 +21,7 @@ const CONDITIONS = ['trending','ranging','volatile','low_volume','high_volume']
 const inp = 'w-full bg-[#1a1a2a] border border-[#2a2a3a] text-gray-200 text-sm px-3 py-2.5 rounded-xl focus:outline-none focus:border-blue-500 transition-colors placeholder:text-gray-600'
 const sel = inp + ' cursor-pointer'
 const lbl = 'block text-gray-400 text-xs font-medium mb-1.5'
+const ta = inp + ' resize-none'
 
 interface Props {
   trade?: Partial<Trade>
@@ -30,34 +31,34 @@ interface Props {
 
 type ScreenshotItem = StoredScreenshot & { url: string; name: string }
 
+const STEPS = [
+  { label: 'Trade', desc: 'Info dasar' },
+  { label: 'Harga', desc: 'Entry & hasil' },
+  { label: 'Catatan', desc: 'Review & foto' },
+  { label: 'Psikologi', desc: 'Kondisi mental' },
+]
+
 export default function TradeForm({ trade, userId, mode }: Props) {
   const router = useRouter()
+  const [step, setStep] = useState(0)
   const [saving, setSaving] = useState(false)
   const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([])
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    const rawScreenshots = (trade as { screenshots?: StoredScreenshot[] } | undefined)?.screenshots ?? []
-    if (!rawScreenshots.length) {
-      setScreenshots([])
-      return
-    }
-
+    const raw = (trade as { screenshots?: StoredScreenshot[] } | undefined)?.screenshots ?? []
+    if (!raw.length) { setScreenshots([]); return }
     let active = true
-    async function loadScreenshotUrls() {
+    async function load() {
       const supabase = createClient()
-      const prepared = await Promise.all(
-        rawScreenshots.map(async sc => ({
-          ...sc,
-          name: sc.name ?? 'screenshot',
-          url: await getScreenshotDisplayUrl(supabase, sc),
-        }))
-      )
+      const prepared = await Promise.all(raw.map(async sc => ({
+        ...sc, name: sc.name ?? 'screenshot',
+        url: await getScreenshotDisplayUrl(supabase, sc),
+      })))
       if (active) setScreenshots(prepared.filter(sc => sc.url))
     }
-
-    loadScreenshotUrls()
+    load()
     return () => { active = false }
   }, [trade])
 
@@ -72,6 +73,7 @@ export default function TradeForm({ trade, userId, mode }: Props) {
     strategy_name: trade?.strategy_name ?? '',
     setup_type: trade?.setup_type ?? '',
     timeframe: trade?.timeframe ?? '',
+    market_condition: trade?.market_condition ?? '',
     entry_at: trade?.entry_at ? trade.entry_at.slice(0,16) : new Date().toISOString().slice(0,16),
     exit_at: trade?.exit_at ? trade.exit_at.slice(0,16) : '',
     entry_price: trade?.entry_price ?? '',
@@ -82,17 +84,15 @@ export default function TradeForm({ trade, userId, mode }: Props) {
     take_profit: trade?.take_profit ?? '',
     risk_amount: trade?.risk_amount ?? '',
     risk_percent: trade?.risk_percent ?? '',
-    fee: trade?.fee ?? 0,
-    funding_fee: trade?.funding_fee ?? 0,
+    fee: trade?.fee ?? '',
+    funding_fee: trade?.funding_fee ?? '',
     gross_pnl: trade?.gross_pnl ?? '',
     net_pnl: trade?.net_pnl ?? '',
     result: trade?.result ?? '',
-    market_condition: trade?.market_condition ?? '',
     entry_reason: trade?.entry_reason ?? '',
     exit_reason: trade?.exit_reason ?? '',
     mistake_notes: trade?.mistake_notes ?? '',
     lesson_learned: trade?.lesson_learned ?? '',
-    // Psychology
     emotion_before: '',
     discipline_score: 7,
     setup_quality_score: 7,
@@ -107,50 +107,59 @@ export default function TradeForm({ trade, userId, mode }: Props) {
     setForm(f => ({ ...f, [key]: value }))
   }
 
+  // Auto-calculate net PnL when gross + fee change
+  function handlePnlChange(key: 'gross_pnl' | 'fee' | 'funding_fee', val: string) {
+    set(key, val)
+    const gross = key === 'gross_pnl' ? Number(val) : Number(form.gross_pnl)
+    const fee = key === 'fee' ? Number(val) : Number(form.fee)
+    const ff = key === 'funding_fee' ? Number(val) : Number(form.funding_fee)
+    if (gross) set('net_pnl', String(Math.round((gross - fee - ff) * 100) / 100))
+  }
+
+  // Auto-set result from net PnL
+  function handleNetPnl(val: string) {
+    set('net_pnl', val)
+    const n = Number(val)
+    if (n > 0) set('result', 'win')
+    else if (n < 0) set('result', 'loss')
+    else if (n === 0 && val !== '') set('result', 'breakeven')
+  }
+
+  function validateStep0() {
+    if (!form.symbol.trim()) { toast.error('Symbol wajib diisi'); return false }
+    if (!form.entry_price) { toast.error('Entry price wajib diisi'); return false }
+    return true
+  }
+
+  function nextStep() {
+    if (step === 0 && !validateStep0()) return
+    setStep(s => Math.min(s + 1, STEPS.length - 1))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function prevStep() {
+    setStep(s => Math.max(s - 1, 0))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   async function handleScreenshotUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
     if (!files.length) return
-    if (screenshots.length + files.length > 5) {
-      toast.error('Maksimal 5 screenshot per trade')
-      return
-    }
+    if (screenshots.length + files.length > 5) { toast.error('Maksimal 5 screenshot'); return }
     setUploading(true)
     const supabase = createClient()
     const uploaded: ScreenshotItem[] = []
-
     for (const file of files) {
-      // Validasi ukuran file
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error(`${file.name} terlalu besar (max 5MB)`)
-        continue
-      }
-      // Validasi tipe file
-      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']
-      if (!allowedTypes.includes(file.type)) {
-        toast.error(`${file.name} bukan format gambar yang valid (PNG, JPG, WEBP, GIF)`)
-        continue
-      }
-      const ext = (file.name.split('.').pop() || 'png').toLowerCase()
+      if (file.size > 5 * 1024 * 1024) { toast.error(`${file.name} terlalu besar`); continue }
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
       const path = `${userId}/screenshots/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-      const { error } = await supabase.storage
-        .from(TRADE_SCREENSHOTS_BUCKET)
-        .upload(path, file, { upsert: false })
-      if (error) {
-        toast.error(`Gagal upload ${file.name}: ${error.message}`)
-        continue
-      }
-      const { data: signedData, error: signedError } = await supabase.storage
-        .from(TRADE_SCREENSHOTS_BUCKET)
-        .createSignedUrl(path, 60 * 60)
-      if (signedError || !signedData?.signedUrl) {
-        toast.error(`Gagal membuat preview ${file.name}`)
-        continue
-      }
-      uploaded.push({ path, url: signedData.signedUrl, name: file.name })
+      const { error } = await supabase.storage.from(TRADE_SCREENSHOTS_BUCKET).upload(path, file)
+      if (error) { toast.error(`Gagal: ${error.message}`); continue }
+      const { data: signed } = await supabase.storage.from(TRADE_SCREENSHOTS_BUCKET).createSignedUrl(path, 3600)
+      if (signed?.signedUrl) uploaded.push({ path, url: signed.signedUrl, name: file.name })
     }
-
     setScreenshots(prev => [...prev, ...uploaded])
-    if (uploaded.length) toast.success(`${uploaded.length} screenshot berhasil diupload!`)
+    if (uploaded.length) toast.success(`${uploaded.length} screenshot diupload!`)
     setUploading(false)
     if (fileRef.current) fileRef.current.value = ''
   }
@@ -159,74 +168,20 @@ export default function TradeForm({ trade, userId, mode }: Props) {
     const supabase = createClient()
     const sc = screenshots[idx]
     const storagePath = getScreenshotStoragePath(sc)
-
     if (storagePath) {
-      const { error } = await supabase.storage
-        .from(TRADE_SCREENSHOTS_BUCKET)
-        .remove([storagePath])
-      if (error) {
-        toast.error('Gagal menghapus file dari storage: ' + error.message)
-        return
-      }
+      const { error } = await supabase.storage.from(TRADE_SCREENSHOTS_BUCKET).remove([storagePath])
+      if (error) { toast.error('Gagal hapus: ' + error.message); return }
     }
-
     setScreenshots(prev => prev.filter((_, i) => i !== idx))
-    toast.success('Screenshot dihapus')
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-
-    // Validasi dasar
-    if (!form.symbol || !form.entry_price || !form.position_type) {
-      toast.error('Symbol, entry price, dan posisi wajib diisi')
-      return
-    }
-
-    // Validasi dengan Zod schema
-    const zodResult = tradeFormSchema.safeParse({
-      symbol: form.symbol,
-      market_type: form.market_type,
-      position_type: form.position_type,
-      mode: form.mode,
-      entry_at: form.entry_at,
-      exit_at: form.exit_at || undefined,
-      entry_price: form.entry_price,
-      exit_price: form.exit_price || undefined,
-      position_size: form.position_size || undefined,
-      leverage: form.leverage,
-      stop_loss: form.stop_loss || undefined,
-      take_profit: form.take_profit || undefined,
-      risk_amount: form.risk_amount || undefined,
-      risk_percent: form.risk_percent || undefined,
-      fee: form.fee,
-      funding_fee: form.funding_fee,
-      gross_pnl: form.gross_pnl || undefined,
-      net_pnl: form.net_pnl || undefined,
-      result: form.result || undefined,
-      market_condition: form.market_condition || undefined,
-      setup_type: form.setup_type || undefined,
-      timeframe: form.timeframe || undefined,
-      entry_reason: form.entry_reason || undefined,
-      exit_reason: form.exit_reason || undefined,
-      mistake_notes: form.mistake_notes || undefined,
-      lesson_learned: form.lesson_learned || undefined,
-    })
-
-    if (!zodResult.success) {
-      const firstError = zodResult.error.errors[0]
-      toast.error(`Validasi gagal: ${firstError.message}`)
-      return
-    }
-
+  async function handleSubmit() {
     setSaving(true)
-
     const supabase = createClient()
-    const storedScreenshots = serializeScreenshots(screenshots)
 
     const tradePayload = {
       user_id: userId,
-      symbol: form.symbol.toUpperCase(),
+      symbol: form.symbol.toUpperCase().trim(),
       market_type: form.market_type,
       exchange: form.exchange || null,
       position_type: form.position_type,
@@ -246,8 +201,8 @@ export default function TradeForm({ trade, userId, mode }: Props) {
       take_profit: form.take_profit ? Number(form.take_profit) : null,
       risk_amount: form.risk_amount ? Number(form.risk_amount) : null,
       risk_percent: form.risk_percent ? Number(form.risk_percent) : null,
-      fee: Number(form.fee) || 0,
-      funding_fee: Number(form.funding_fee) || 0,
+      fee: form.fee ? Number(form.fee) : 0,
+      funding_fee: form.funding_fee ? Number(form.funding_fee) : 0,
       gross_pnl: form.gross_pnl ? Number(form.gross_pnl) : null,
       net_pnl: form.net_pnl ? Number(form.net_pnl) : null,
       result: form.result || null,
@@ -256,24 +211,22 @@ export default function TradeForm({ trade, userId, mode }: Props) {
       exit_reason: form.exit_reason || null,
       mistake_notes: form.mistake_notes || null,
       lesson_learned: form.lesson_learned || null,
-      screenshots: storedScreenshots,
+      screenshots: serializeScreenshots(screenshots),
     }
 
     let tradeId = trade?.id
     if (mode === 'add') {
       const { data, error } = await supabase.from('trades').insert(tradePayload).select().single()
-      if (error) { toast.error('Gagal menyimpan trade: ' + error.message); setSaving(false); return }
+      if (error) { toast.error('Gagal: ' + error.message); setSaving(false); return }
       tradeId = data.id
     } else {
       const { error } = await supabase.from('trades').update({ ...tradePayload, updated_at: new Date().toISOString() }).eq('id', trade!.id!)
-      if (error) { toast.error('Gagal update trade: ' + error.message); setSaving(false); return }
+      if (error) { toast.error('Gagal: ' + error.message); setSaving(false); return }
     }
 
-    // Save psychology if emotion filled
     if (form.emotion_before && tradeId) {
       await supabase.from('trade_psychology').upsert({
-        trade_id: tradeId,
-        user_id: userId,
+        trade_id: tradeId, user_id: userId,
         emotion_before: form.emotion_before,
         discipline_score: form.discipline_score,
         setup_quality_score: form.setup_quality_score,
@@ -285,313 +238,456 @@ export default function TradeForm({ trade, userId, mode }: Props) {
       }, { onConflict: 'trade_id' })
     }
 
-    toast.success(mode === 'add' ? 'Trade berhasil ditambahkan!' : 'Trade berhasil diupdate!')
+    toast.success(mode === 'add' ? 'Trade berhasil ditambahkan!' : 'Trade diupdate!')
     router.push(tradeId ? `/trades/${tradeId}` : '/trades')
     router.refresh()
   }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-3xl mx-auto p-6 space-y-6">
-      {/* Section: Identifikasi */}
-      <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-4">
-        <h2 className="text-gray-200 font-semibold text-sm border-b border-[#2a2a3a] pb-3">Identifikasi Trade</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="col-span-2 sm:col-span-1">
-            <label className={lbl}>Symbol / Pair *</label>
-            <input className={inp} value={form.symbol} onChange={e => set('symbol', e.target.value)} placeholder="BTCUSDT" required />
-          </div>
-          <div>
-            <label className={lbl}>Market Type</label>
-            <select className={sel} value={form.market_type} onChange={e => set('market_type', e.target.value)}>
-              {['crypto','forex','saham','futures','other'].map(v => <option key={v}>{v}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={lbl}>Exchange / Broker</label>
-            <input className={inp} value={form.exchange} onChange={e => set('exchange', e.target.value)} placeholder="Binance, Bybit..." />
-          </div>
-          <div>
-            <label className={lbl}>Side *</label>
-            <select className={sel} value={form.position_type} onChange={e => set('position_type', e.target.value)} required>
-              <option value="long">Long</option>
-              <option value="short">Short</option>
-            </select>
-          </div>
-          <div>
-            <label className={lbl}>Mode</label>
-            <select className={sel} value={form.mode} onChange={e => set('mode', e.target.value)}>
-              {['manual','bot','copytrade','signal'].map(v => <option key={v}>{v}</option>)}
-            </select>
-          </div>
-          {form.mode === 'bot' && <>
-            <div>
-              <label className={lbl}>Nama Bot</label>
-              <input className={inp} value={form.bot_name} onChange={e => set('bot_name', e.target.value)} placeholder="OMAD SNIPER v11" />
+    <div className="max-w-lg mx-auto p-4 pb-10">
+      {/* Step indicator */}
+      <div className="mb-6">
+        <div className="flex items-center gap-0 mb-3">
+          {STEPS.map((s, i) => (
+            <div key={i} className="flex items-center flex-1">
+              <button type="button" onClick={() => { if (i < step || (i === step + 1 && validateStep0())) setStep(i) }}
+                className={`w-8 h-8 rounded-full text-xs font-bold border-2 transition-all flex-shrink-0 ${
+                  i === step ? 'bg-blue-600 border-blue-600 text-white'
+                  : i < step ? 'bg-emerald-500 border-emerald-500 text-white'
+                  : 'bg-[#1a1a2a] border-[#2a2a3a] text-gray-500'
+                }`}>
+                {i < step ? (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} className="w-4 h-4 mx-auto">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                ) : i + 1}
+              </button>
+              {i < STEPS.length - 1 && (
+                <div className={`flex-1 h-0.5 mx-1 ${i < step ? 'bg-emerald-500' : 'bg-[#2a2a3a]'}`} />
+              )}
             </div>
-            <div>
-              <label className={lbl}>Versi Bot</label>
-              <input className={inp} value={form.bot_version} onChange={e => set('bot_version', e.target.value)} placeholder="v11.2" />
+          ))}
+        </div>
+        <div className="flex justify-between px-0">
+          {STEPS.map((s, i) => (
+            <div key={i} className="text-center" style={{ width: '25%' }}>
+              <p className={`text-xs font-medium ${i === step ? 'text-blue-400' : i < step ? 'text-emerald-400' : 'text-gray-600'}`}>{s.label}</p>
             </div>
-          </>}
+          ))}
         </div>
       </div>
 
-      {/* Section: Strategi */}
-      <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-4">
-        <h2 className="text-gray-200 font-semibold text-sm border-b border-[#2a2a3a] pb-3">Strategi & Setup</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className={lbl}>Nama Strategi</label>
-            <input className={inp} value={form.strategy_name} onChange={e => set('strategy_name', e.target.value)} placeholder="Breakout EMA" />
-          </div>
-          <div>
-            <label className={lbl}>Setup Type</label>
-            <select className={sel} value={form.setup_type} onChange={e => set('setup_type', e.target.value)}>
-              <option value="">— Pilih —</option>
-              {SETUPS.map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={lbl}>Timeframe</label>
-            <select className={sel} value={form.timeframe} onChange={e => set('timeframe', e.target.value)}>
-              <option value="">— Pilih —</option>
-              {TIMEFRAMES.map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={lbl}>Market Condition</label>
-            <select className={sel} value={form.market_condition} onChange={e => set('market_condition', e.target.value)}>
-              <option value="">— Pilih —</option>
-              {CONDITIONS.map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </div>
-        </div>
-      </div>
+      {/* STEP 0: Info Dasar Trade */}
+      {step === 0 && (
+        <div className="space-y-4">
+          <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-4">
+            <h2 className="text-white font-semibold text-sm">Info Dasar <span className="text-gray-500 font-normal">(wajib)</span></h2>
 
-      {/* Section: Harga & Waktu */}
-      <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-4">
-        <h2 className="text-gray-200 font-semibold text-sm border-b border-[#2a2a3a] pb-3">Harga & Waktu</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className={lbl}>Entry Price *</label>
-            <input type="number" step="any" className={inp} value={form.entry_price} onChange={e => set('entry_price', e.target.value)} placeholder="67000" required />
-          </div>
-          <div>
-            <label className={lbl}>Exit Price</label>
-            <input type="number" step="any" className={inp} value={form.exit_price} onChange={e => set('exit_price', e.target.value)} placeholder="68500" />
-          </div>
-          <div>
-            <label className={lbl}>Entry Date & Time *</label>
-            <input type="datetime-local" className={inp} value={form.entry_at} onChange={e => set('entry_at', e.target.value)} required />
-          </div>
-          <div>
-            <label className={lbl}>Exit Date & Time</label>
-            <input type="datetime-local" className={inp} value={form.exit_at} onChange={e => set('exit_at', e.target.value)} />
-          </div>
-        </div>
-      </div>
-
-      {/* Section: Sizing & Risk */}
-      <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-4">
-        <h2 className="text-gray-200 font-semibold text-sm border-b border-[#2a2a3a] pb-3">Position Sizing & Risk</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className={lbl}>Position Size</label>
-            <input type="number" step="any" className={inp} value={form.position_size} onChange={e => set('position_size', e.target.value)} placeholder="0.05" />
-          </div>
-          <div>
-            <label className={lbl}>Leverage (x)</label>
-            <input type="number" min={1} max={200} className={inp} value={form.leverage} onChange={e => set('leverage', e.target.value)} />
-          </div>
-          <div>
-            <label className={lbl}>Stop Loss</label>
-            <input type="number" step="any" className={inp} value={form.stop_loss} onChange={e => set('stop_loss', e.target.value)} placeholder="66000" />
-          </div>
-          <div>
-            <label className={lbl}>Take Profit</label>
-            <input type="number" step="any" className={inp} value={form.take_profit} onChange={e => set('take_profit', e.target.value)} placeholder="69000" />
-          </div>
-          <div>
-            <label className={lbl}>Risk Amount ($)</label>
-            <input type="number" step="any" className={inp} value={form.risk_amount} onChange={e => set('risk_amount', e.target.value)} placeholder="50" />
-          </div>
-          <div>
-            <label className={lbl}>Risk (%)</label>
-            <input type="number" step="any" className={inp} value={form.risk_percent} onChange={e => set('risk_percent', e.target.value)} placeholder="2" />
-          </div>
-        </div>
-      </div>
-
-      {/* Section: Hasil */}
-      <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-4">
-        <h2 className="text-gray-200 font-semibold text-sm border-b border-[#2a2a3a] pb-3">Hasil Trade</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className={lbl}>Gross P/L ($)</label>
-            <input type="number" step="any" className={inp} value={form.gross_pnl} onChange={e => set('gross_pnl', e.target.value)} placeholder="75" />
-          </div>
-          <div>
-            <label className={lbl}>Net P/L ($)</label>
-            <input type="number" step="any" className={inp} value={form.net_pnl} onChange={e => set('net_pnl', e.target.value)} placeholder="63" />
-          </div>
-          <div>
-            <label className={lbl}>Fee ($)</label>
-            <input type="number" step="any" className={inp} value={form.fee} onChange={e => set('fee', e.target.value)} />
-          </div>
-          <div>
-            <label className={lbl}>Funding Fee ($)</label>
-            <input type="number" step="any" className={inp} value={form.funding_fee} onChange={e => set('funding_fee', e.target.value)} />
-          </div>
-          <div className="col-span-2">
-            <label className={lbl}>Result</label>
-            <div className="flex gap-3">
-              {['win','loss','breakeven'].map(r => (
-                <button key={r} type="button" onClick={() => set('result', r)}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all ${
-                    form.result === r
-                      ? r === 'win' ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
-                        : r === 'loss' ? 'bg-red-500/20 border-red-500/50 text-red-400'
-                        : 'bg-gray-500/20 border-gray-500/50 text-gray-300'
-                      : 'border-[#2a2a3a] text-gray-500 hover:border-gray-500'
-                  }`}>
-                  {r.charAt(0).toUpperCase() + r.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Section: Screenshot */}
-      <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-4">
-        <h2 className="text-gray-200 font-semibold text-sm border-b border-[#2a2a3a] pb-3">Screenshot Chart</h2>
-        <p className="text-gray-500 text-xs">Upload bukti chart, setup, atau hasil trade kamu. Max 5 gambar, masing-masing max 5MB.</p>
-
-        {/* Upload area */}
-        <div
-          onClick={() => !uploading && fileRef.current?.click()}
-          className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
-            uploading ? 'border-blue-500/50 bg-blue-500/5' : 'border-[#2a2a3a] hover:border-blue-500/50 hover:bg-blue-500/5'
-          }`}>
-          {uploading ? (
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-              <p className="text-blue-400 text-xs">Mengupload...</p>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-2">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-8 h-8 text-gray-500"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-              <p className="text-gray-400 text-sm font-medium">Klik untuk upload screenshot</p>
-              <p className="text-gray-600 text-xs">PNG, JPG, WEBP • Max 5MB per file • Max 5 gambar</p>
-            </div>
-          )}
-        </div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={handleScreenshotUpload}
-        />
-
-        {/* Preview grid */}
-        {screenshots.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {screenshots.map((sc, idx) => (
-              <div key={idx} className="relative group rounded-xl overflow-hidden border border-[#2a2a3a] aspect-video bg-[#1a1a2a]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={sc.url} alt={sc.name} className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                  <a href={sc.url} target="_blank" rel="noopener noreferrer"
-                    className="bg-white/20 hover:bg-white/30 text-white text-xs px-2 py-1 rounded-lg transition-colors">
-                    Lihat
-                  </a>
-                  <button type="button" onClick={() => removeScreenshot(idx)}
-                    className="bg-red-500/60 hover:bg-red-500 text-white text-xs px-2 py-1 rounded-lg transition-colors">
-                    Hapus
-                  </button>
-                </div>
-                <div className="absolute bottom-0 inset-x-0 bg-black/70 px-2 py-1">
-                  <p className="text-white text-[9px] truncate">{sc.name}</p>
+            {/* Symbol + Side */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Pair / Symbol *</label>
+                <input className={inp} value={form.symbol} onChange={e => set('symbol', e.target.value.toUpperCase())}
+                  placeholder="BTCUSDT" autoFocus />
+              </div>
+              <div>
+                <label className={lbl}>Side *</label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  {['long','short'].map(v => (
+                    <button key={v} type="button" onClick={() => set('position_type', v)}
+                      className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                        form.position_type === v
+                          ? v === 'long' ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
+                            : 'bg-red-500/20 border-red-500/50 text-red-400'
+                          : 'border-[#2a2a3a] text-gray-500'
+                      }`}>{v.toUpperCase()}</button>
+                  ))}
                 </div>
               </div>
-            ))}
+            </div>
+
+            {/* Entry price + datetime */}
+            <div>
+              <label className={lbl}>Entry Price *</label>
+              <input type="number" step="any" className={inp} value={form.entry_price}
+                onChange={e => set('entry_price', e.target.value)} placeholder="67000" />
+            </div>
+            <div>
+              <label className={lbl}>Tanggal & Waktu Entry</label>
+              <input type="datetime-local" className={inp} value={form.entry_at}
+                onChange={e => set('entry_at', e.target.value)} />
+            </div>
+
+            {/* Market + Exchange */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Market</label>
+                <select className={sel} value={form.market_type} onChange={e => set('market_type', e.target.value)}>
+                  {['crypto','forex','saham','futures','other'].map(v => <option key={v}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Exchange</label>
+                <input className={inp} value={form.exchange} onChange={e => set('exchange', e.target.value)} placeholder="Binance" />
+              </div>
+            </div>
+
+            {/* Mode */}
+            <div>
+              <label className={lbl}>Mode Trading</label>
+              <div className="grid grid-cols-4 gap-2">
+                {['manual','bot','copytrade','signal'].map(v => (
+                  <button key={v} type="button" onClick={() => set('mode', v)}
+                    className={`py-2 rounded-xl text-xs font-medium border transition-all ${
+                      form.mode === v ? 'bg-blue-600/20 border-blue-500/50 text-blue-400' : 'border-[#2a2a3a] text-gray-500'
+                    }`}>{v}</button>
+                ))}
+              </div>
+            </div>
+
+            {form.mode === 'bot' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={lbl}>Nama Bot</label><input className={inp} value={form.bot_name} onChange={e => set('bot_name', e.target.value)} placeholder="OMAD Bot" /></div>
+                <div><label className={lbl}>Versi</label><input className={inp} value={form.bot_version} onChange={e => set('bot_version', e.target.value)} placeholder="v1.0" /></div>
+              </div>
+            )}
           </div>
+
+          {/* Strategy - collapsible optional */}
+          <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-3">
+            <h2 className="text-gray-400 text-sm font-medium">Strategi <span className="text-gray-600">(opsional)</span></h2>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Nama Strategi</label>
+                <input className={inp} value={form.strategy_name} onChange={e => set('strategy_name', e.target.value)} placeholder="Breakout EMA" />
+              </div>
+              <div>
+                <label className={lbl}>Setup</label>
+                <select className={sel} value={form.setup_type} onChange={e => set('setup_type', e.target.value)}>
+                  <option value="">— Pilih —</option>
+                  {SETUPS.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Timeframe</label>
+                <select className={sel} value={form.timeframe} onChange={e => set('timeframe', e.target.value)}>
+                  <option value="">— Pilih —</option>
+                  {TIMEFRAMES.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Kondisi Pasar</label>
+                <select className={sel} value={form.market_condition} onChange={e => set('market_condition', e.target.value)}>
+                  <option value="">— Pilih —</option>
+                  {CONDITIONS.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 1: Harga & Hasil */}
+      {step === 1 && (
+        <div className="space-y-4">
+          <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-4">
+            <h2 className="text-white font-semibold text-sm">Harga & Waktu Exit</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Exit Price</label>
+                <input type="number" step="any" className={inp} value={form.exit_price}
+                  onChange={e => set('exit_price', e.target.value)} placeholder="68500" />
+              </div>
+              <div>
+                <label className={lbl}>Tanggal Exit</label>
+                <input type="datetime-local" className={inp} value={form.exit_at}
+                  onChange={e => set('exit_at', e.target.value)} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Stop Loss</label>
+                <input type="number" step="any" className={inp} value={form.stop_loss}
+                  onChange={e => set('stop_loss', e.target.value)} placeholder="66000" />
+              </div>
+              <div>
+                <label className={lbl}>Take Profit</label>
+                <input type="number" step="any" className={inp} value={form.take_profit}
+                  onChange={e => set('take_profit', e.target.value)} placeholder="69000" />
+              </div>
+              <div>
+                <label className={lbl}>Size / Lot</label>
+                <input type="number" step="any" className={inp} value={form.position_size}
+                  onChange={e => set('position_size', e.target.value)} placeholder="0.05" />
+              </div>
+              <div>
+                <label className={lbl}>Leverage (x)</label>
+                <input type="number" min={1} max={200} className={inp} value={form.leverage}
+                  onChange={e => set('leverage', e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-4">
+            <h2 className="text-white font-semibold text-sm">Hasil Trade</h2>
+
+            {/* P/L dengan auto-calculate */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Gross P/L ($)</label>
+                <input type="number" step="any" className={inp} value={form.gross_pnl}
+                  onChange={e => handlePnlChange('gross_pnl', e.target.value)} placeholder="75" />
+              </div>
+              <div>
+                <label className={lbl}>Fee ($)</label>
+                <input type="number" step="any" className={inp} value={form.fee}
+                  onChange={e => handlePnlChange('fee', e.target.value)} placeholder="0" />
+              </div>
+              <div>
+                <label className={lbl}>Funding Fee ($)</label>
+                <input type="number" step="any" className={inp} value={form.funding_fee}
+                  onChange={e => handlePnlChange('funding_fee', e.target.value)} placeholder="0" />
+              </div>
+              <div>
+                <label className={lbl}>
+                  Net P/L ($)
+                  {form.gross_pnl && <span className="text-gray-600 text-[10px] ml-1">auto</span>}
+                </label>
+                <input type="number" step="any"
+                  className={inp + (form.net_pnl && Number(form.net_pnl) >= 0 ? ' text-emerald-400' : form.net_pnl ? ' text-red-400' : '')}
+                  value={form.net_pnl} onChange={e => handleNetPnl(e.target.value)} placeholder="63" />
+              </div>
+            </div>
+
+            {/* Risk */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Risk Amount ($)</label>
+                <input type="number" step="any" className={inp} value={form.risk_amount}
+                  onChange={e => set('risk_amount', e.target.value)} placeholder="50" />
+              </div>
+              <div>
+                <label className={lbl}>Risk (%)</label>
+                <input type="number" step="any" className={inp} value={form.risk_percent}
+                  onChange={e => set('risk_percent', e.target.value)} placeholder="2" />
+              </div>
+            </div>
+
+            {/* Result buttons */}
+            <div>
+              <label className={lbl}>Hasil</label>
+              <div className="flex gap-2">
+                {['win','loss','breakeven'].map(r => (
+                  <button key={r} type="button" onClick={() => set('result', r)}
+                    className={`flex-1 py-3 rounded-xl text-sm font-bold border transition-all ${
+                      form.result === r
+                        ? r === 'win' ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
+                          : r === 'loss' ? 'bg-red-500/20 border-red-500/50 text-red-400'
+                          : 'bg-gray-500/20 border-gray-500/50 text-gray-300'
+                        : 'border-[#2a2a3a] text-gray-500 hover:border-gray-500'
+                    }`}>
+                    {r === 'win' ? 'Win' : r === 'loss' ? 'Loss' : 'BE'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2: Catatan & Screenshot */}
+      {step === 2 && (
+        <div className="space-y-4">
+          <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-4">
+            <h2 className="text-white font-semibold text-sm">Catatan Evaluasi</h2>
+            <div>
+              <label className={lbl}>Alasan Entry</label>
+              <textarea className={ta} rows={2} value={form.entry_reason}
+                onChange={e => set('entry_reason', e.target.value)} placeholder="Kenapa masuk trade ini?" />
+            </div>
+            <div>
+              <label className={lbl}>Alasan Exit</label>
+              <textarea className={ta} rows={2} value={form.exit_reason}
+                onChange={e => set('exit_reason', e.target.value)} placeholder="Kenapa keluar?" />
+            </div>
+            <div>
+              <label className={lbl}>Kesalahan</label>
+              <textarea className={ta} rows={2} value={form.mistake_notes}
+                onChange={e => set('mistake_notes', e.target.value)} placeholder="Apa yang salah?" />
+            </div>
+            <div>
+              <label className={lbl}>Pelajaran</label>
+              <textarea className={ta} rows={2} value={form.lesson_learned}
+                onChange={e => set('lesson_learned', e.target.value)} placeholder="Apa yang dipelajari?" />
+            </div>
+          </div>
+
+          {/* Screenshot */}
+          <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-3">
+            <h2 className="text-white font-semibold text-sm">Screenshot Chart <span className="text-gray-600 font-normal">(opsional, max 5)</span></h2>
+            <div onClick={() => !uploading && fileRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-colors ${
+                uploading ? 'border-blue-500/50 bg-blue-500/5' : 'border-[#2a2a3a] hover:border-blue-500/40'
+              }`}>
+              {uploading ? (
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-6 h-6 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                  <p className="text-blue-400 text-xs">Mengupload...</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-1.5">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-8 h-8 text-gray-500">
+                    <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                    <circle cx="12" cy="13" r="4"/>
+                  </svg>
+                  <p className="text-gray-400 text-sm">Tap untuk upload foto chart</p>
+                  <p className="text-gray-600 text-xs">Max 5MB per foto</p>
+                </div>
+              )}
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleScreenshotUpload} />
+            {screenshots.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {screenshots.map((sc, idx) => (
+                  <div key={idx} className="relative group aspect-square rounded-xl overflow-hidden border border-[#2a2a3a] bg-[#1a1a2a]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={sc.url} alt={sc.name} className="w-full h-full object-cover" />
+                    <button type="button" onClick={() => removeScreenshot(idx)}
+                      className="absolute top-1 right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3 h-3 text-white">
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* STEP 3: Psychology */}
+      {step === 3 && (
+        <div className="space-y-4">
+          <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-5">
+            <div>
+              <h2 className="text-white font-semibold text-sm">Psychology Journal</h2>
+              <p className="text-gray-500 text-xs mt-0.5">Opsional — lewati jika tidak ingin mengisi</p>
+            </div>
+
+            <div>
+              <label className={lbl}>Emosi Sebelum Entry</label>
+              <div className="grid grid-cols-2 gap-2">
+                {EMOTIONS.map(v => (
+                  <button key={v} type="button" onClick={() => set('emotion_before', form.emotion_before === v ? '' : v)}
+                    className={`py-2 px-3 rounded-xl text-xs font-medium border transition-all text-left ${
+                      form.emotion_before === v ? 'bg-blue-600/20 border-blue-500/50 text-blue-400' : 'border-[#2a2a3a] text-gray-500 hover:border-gray-600'
+                    }`}>{v}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between mb-1.5">
+                  <label className={lbl + ' mb-0'}>Skor Disiplin</label>
+                  <span className="text-blue-400 text-xs font-bold">{form.discipline_score}/10</span>
+                </div>
+                <input type="range" min={1} max={10} className="w-full accent-blue-500"
+                  value={form.discipline_score} onChange={e => set('discipline_score', +e.target.value)} />
+                <div className="flex justify-between text-gray-600 text-[10px] mt-0.5">
+                  <span>Tidak disiplin</span><span>Sangat disiplin</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between mb-1.5">
+                  <label className={lbl + ' mb-0'}>Kualitas Setup</label>
+                  <span className="text-violet-400 text-xs font-bold">{form.setup_quality_score}/10</span>
+                </div>
+                <input type="range" min={1} max={10} className="w-full accent-violet-500"
+                  value={form.setup_quality_score} onChange={e => set('setup_quality_score', +e.target.value)} />
+                <div className="flex justify-between text-gray-600 text-[10px] mt-0.5">
+                  <span>Setup jelek</span><span>Setup sempurna</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { key: 'followed_plan_entry', label: 'Entry sesuai plan' },
+                { key: 'followed_plan_exit', label: 'Exit sesuai plan' },
+                { key: 'revenge_trade', label: 'Revenge trade' },
+                { key: 'oversized', label: 'Posisi terlalu besar' },
+              ].map(({ key, label }) => {
+                const checked = !!form[key as keyof typeof form]
+                return (
+                  <button key={key} type="button" onClick={() => set(key, !checked)}
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                      checked
+                        ? (key === 'revenge_trade' || key === 'oversized')
+                          ? 'border-red-500/40 bg-red-500/10'
+                          : 'border-emerald-500/40 bg-emerald-500/10'
+                        : 'border-[#2a2a3a] bg-[#1a1a2a]'
+                    }`}>
+                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                      checked
+                        ? (key === 'revenge_trade' || key === 'oversized') ? 'border-red-500 bg-red-500' : 'border-emerald-500 bg-emerald-500'
+                        : 'border-[#3a3a4a]'
+                    }`}>
+                      {checked && <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3} className="w-2.5 h-2.5"><polyline points="20 6 9 17 4 12"/></svg>}
+                    </div>
+                    <span className={`text-xs ${checked ? 'text-gray-200' : 'text-gray-500'}`}>{label}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div>
+              <label className={lbl}>Catatan Psychology</label>
+              <textarea className={ta} rows={3} value={form.psych_notes}
+                onChange={e => set('psych_notes', e.target.value)}
+                placeholder="Kondisi mental saat trade ini..." />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Navigation buttons */}
+      <div className="flex gap-3 mt-6">
+        {step > 0 ? (
+          <button type="button" onClick={prevStep}
+            className="flex-1 bg-[#1e1e2e] hover:bg-[#2a2a3a] text-gray-300 py-3.5 rounded-xl text-sm font-medium transition-colors">
+            ← Kembali
+          </button>
+        ) : (
+          <button type="button" onClick={() => router.back()}
+            className="flex-1 bg-[#1e1e2e] hover:bg-[#2a2a3a] text-gray-300 py-3.5 rounded-xl text-sm font-medium transition-colors">
+            Batal
+          </button>
+        )}
+
+        {step < STEPS.length - 1 ? (
+          <button type="button" onClick={nextStep}
+            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-3.5 rounded-xl text-sm font-bold transition-colors">
+            Lanjut →
+          </button>
+        ) : (
+          <button type="button" onClick={handleSubmit} disabled={saving}
+            className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white py-3.5 rounded-xl text-sm font-bold transition-colors">
+            {saving ? 'Menyimpan...' : mode === 'add' ? 'Simpan Trade' : 'Update Trade'}
+          </button>
         )}
       </div>
 
-      {/* Section: Notes */}
-      <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-4">
-        <h2 className="text-gray-200 font-semibold text-sm border-b border-[#2a2a3a] pb-3">Catatan & Evaluasi</h2>
-        <div>
-          <label className={lbl}>Alasan Entry</label>
-          <textarea className={inp + ' resize-none'} rows={2} value={form.entry_reason} onChange={e => set('entry_reason', e.target.value)} placeholder="Kenapa kamu masuk trade ini?" />
-        </div>
-        <div>
-          <label className={lbl}>Alasan Exit</label>
-          <textarea className={inp + ' resize-none'} rows={2} value={form.exit_reason} onChange={e => set('exit_reason', e.target.value)} placeholder="Kenapa kamu keluar?" />
-        </div>
-        <div>
-          <label className={lbl}>Catatan Kesalahan</label>
-          <textarea className={inp + ' resize-none'} rows={2} value={form.mistake_notes} onChange={e => set('mistake_notes', e.target.value)} placeholder="Apa yang salah?" />
-        </div>
-        <div>
-          <label className={lbl}>Pelajaran</label>
-          <textarea className={inp + ' resize-none'} rows={2} value={form.lesson_learned} onChange={e => set('lesson_learned', e.target.value)} placeholder="Apa yang kamu pelajari?" />
-        </div>
-      </div>
-
-      {/* Section: Psychology */}
-      <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl p-5 space-y-4">
-        <h2 className="text-gray-200 font-semibold text-sm border-b border-[#2a2a3a] pb-3">Psychology Journal</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className={lbl}>Emosi Sebelum Entry</label>
-            <select className={sel} value={form.emotion_before} onChange={e => set('emotion_before', e.target.value)}>
-              <option value="">— Pilih —</option>
-              {EMOTIONS.map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={lbl}>Skor Disiplin: <span className="text-blue-400 font-bold">{form.discipline_score}/10</span></label>
-            <input type="range" min={1} max={10} className="w-full accent-blue-500 mt-2" value={form.discipline_score} onChange={e => set('discipline_score', +e.target.value)} />
-          </div>
-          <div>
-            <label className={lbl}>Kualitas Setup: <span className="text-violet-400 font-bold">{form.setup_quality_score}/10</span></label>
-            <input type="range" min={1} max={10} className="w-full accent-violet-500 mt-2" value={form.setup_quality_score} onChange={e => set('setup_quality_score', +e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            {[
-              { key: 'followed_plan_entry', label: 'Entry sesuai plan' },
-              { key: 'followed_plan_exit', label: 'Exit sesuai plan' },
-              { key: 'revenge_trade', label: 'Revenge trade' },
-              { key: 'oversized', label: 'Oversized position' },
-            ].map(({ key, label }) => (
-              <label key={key} className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="accent-blue-500 w-4 h-4"
-                  checked={!!form[key as keyof typeof form]}
-                  onChange={e => set(key, e.target.checked)} />
-                <span className="text-gray-300 text-xs">{label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-        <div>
-          <label className={lbl}>Catatan Psychology</label>
-          <textarea className={inp + ' resize-none'} rows={2} value={form.psych_notes} onChange={e => set('psych_notes', e.target.value)} placeholder="Kondisi mental & emosi kamu saat trade ini..." />
-        </div>
-      </div>
-
-      {/* Submit */}
-      <div className="flex gap-3 pb-6">
-        <button type="button" onClick={() => router.back()} className="flex-1 bg-[#1e1e2e] hover:bg-[#2a2a3a] text-gray-300 py-3 rounded-xl text-sm font-medium transition-colors">
-          Batal
+      {/* Skip psychology hint on last step */}
+      {step === 3 && (
+        <button type="button" onClick={handleSubmit} disabled={saving}
+          className="w-full text-gray-600 text-xs py-2 hover:text-gray-400 transition-colors">
+          Lewati — simpan tanpa psychology
         </button>
-        <button type="submit" disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white py-3 rounded-xl text-sm font-bold transition-colors">
-          {saving ? 'Menyimpan...' : mode === 'add' ? 'Simpan Trade' : 'Update Trade'}
-        </button>
-      </div>
-    </form>
+      )}
+    </div>
   )
 }
