@@ -3,10 +3,16 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import {
+  TRADE_SCREENSHOTS_BUCKET,
+  getScreenshotDisplayUrl,
+  getScreenshotStoragePath,
+  type StoredScreenshot,
+} from '@/lib/supabase/storage'
 import { toast } from 'sonner'
 import type { Trade, TradePsychology } from '@/types/trade'
 
-type ScreenshotItem = { url: string; name: string }
+type ScreenshotItem = StoredScreenshot & { url: string; name: string }
 
 function Row({ label, value, mono = false, highlight }: {
   label: string; value?: string | number | null; mono?: boolean; highlight?: 'green' | 'red'
@@ -47,10 +53,18 @@ export default function TradeDetailPage() {
       const { data: p } = await supabase.from('trade_psychology').select('*').eq('trade_id', id).single()
       setTrade(t)
       setPsych(p)
-      // Screenshots from JSONB field
-      if (t?.screenshots && Array.isArray(t.screenshots)) {
-        setScreenshots(t.screenshots as ScreenshotItem[])
-      }
+
+      const rawScreenshots = Array.isArray((t as { screenshots?: StoredScreenshot[] } | null)?.screenshots)
+        ? (t as { screenshots: StoredScreenshot[] }).screenshots
+        : []
+      const prepared = await Promise.all(
+        rawScreenshots.map(async sc => ({
+          ...sc,
+          name: sc.name ?? 'screenshot',
+          url: await getScreenshotDisplayUrl(supabase, sc),
+        }))
+      )
+      setScreenshots(prepared.filter(sc => sc.url))
       setLoading(false)
     }
     load()
@@ -59,6 +73,14 @@ export default function TradeDetailPage() {
   async function handleDelete() {
     if (!confirm('Hapus trade ini? Tidak bisa dikembalikan.')) return
     const supabase = createClient()
+    const storagePaths = screenshots
+      .map(getScreenshotStoragePath)
+      .filter((path): path is string => Boolean(path))
+
+    if (storagePaths.length > 0) {
+      await supabase.storage.from(TRADE_SCREENSHOTS_BUCKET).remove(storagePaths)
+    }
+
     await supabase.from('trades').delete().eq('id', id)
     toast.success('Trade dihapus')
     router.push('/trades')
