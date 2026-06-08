@@ -2,6 +2,7 @@
 // Supabase browser client
 
 import { createBrowserClient } from '@supabase/ssr';
+import { TRADE_SCREENSHOTS_BUCKET } from './storage';
 
 export function createClient() {
   return createBrowserClient(
@@ -102,11 +103,11 @@ export async function uploadScreenshot(
   file: File
 ) {
   const supabase = createClient();
-  const ext = file.name.split('.').pop();
+  const ext = (file.name.split('.').pop() || 'png').toLowerCase();
   const path = `${userId}/${tradeId}/${stage}-${Date.now()}.${ext}`;
 
   const { error: uploadError } = await supabase.storage
-    .from('trade-screenshots')
+    .from(TRADE_SCREENSHOTS_BUCKET)
     .upload(path, file, { cacheControl: '3600', upsert: false });
   if (uploadError) throw uploadError;
 
@@ -121,12 +122,14 @@ export async function uploadScreenshot(
   return path;
 }
 
-export function getScreenshotUrl(path: string) {
+export async function getScreenshotUrl(path: string, expiresIn = 60 * 60) {
   const supabase = createClient();
-  const { data } = supabase.storage
-    .from('trade-screenshots')
-    .getPublicUrl(path);
-  return data.publicUrl;
+  const { data, error } = await supabase.storage
+    .from(TRADE_SCREENSHOTS_BUCKET)
+    .createSignedUrl(path, expiresIn);
+
+  if (error) throw error;
+  return data.signedUrl;
 }
 
 // ─── TRADING RULES ────────────────────────────────────────────
