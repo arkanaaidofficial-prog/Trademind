@@ -7,6 +7,7 @@ export const tradeFormSchema = z.object({
   // Core
   symbol: z.string().min(1, 'Symbol wajib diisi').max(20).transform(v => v.toUpperCase()),
   market_type: z.enum(['crypto', 'forex', 'saham', 'futures', 'other']).default('crypto'),
+  trade_account_type: z.enum(['spot', 'futures', 'margin']).default('spot'),
   exchange: z.string().optional(),
   position_type: z.enum(['long', 'short'], { required_error: 'Pilih Long atau Short' }),
   mode: z.enum(['manual', 'bot', 'copytrade', 'signal']).default('manual'),

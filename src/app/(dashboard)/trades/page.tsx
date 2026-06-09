@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { tradesToCsv, downloadFile } from '@/lib/importExport'
 import type { Trade, TradeFilter } from '@/types/trade'
+import { formatTradeAccountType } from '@/types/trade-account'
 import { toast } from 'sonner'
 import { Icons } from '@/components/ui/Icons'
 
@@ -19,7 +20,7 @@ const inp = 'bg-[#1a1a2a] border border-[#2a2a3a] text-gray-200 text-xs px-3 py-
 export default function TradesPage() {
   const [trades,   setTrades]   = useState<Trade[]>([])
   const [loading,  setLoading]  = useState(true)
-  const [filter,   setFilter]   = useState<TradeFilter>({ result: 'all', mode: 'all', symbol: '' })
+  const [filter,   setFilter]   = useState<TradeFilter>({ result: 'all', mode: 'all', trade_account_type: 'all', symbol: '' })
   const [deleting, setDeleting] = useState<string | null>(null)
 
   async function load() {
@@ -37,6 +38,7 @@ export default function TradesPage() {
   const filtered = useMemo(() => trades.filter(t => {
     if (filter.result && filter.result !== 'all' && t.result !== filter.result) return false
     if (filter.mode   && filter.mode   !== 'all' && t.mode   !== filter.mode)   return false
+    if (filter.trade_account_type && filter.trade_account_type !== 'all' && (t.trade_account_type ?? 'spot') !== filter.trade_account_type) return false
     if (filter.symbol && !t.symbol?.toLowerCase().includes(filter.symbol.toLowerCase())) return false
     return true
   }), [trades, filter])
@@ -100,6 +102,10 @@ export default function TradesPage() {
             <option value="manual">Manual</option><option value="bot">Bot</option>
             <option value="copytrade">Copytrade</option><option value="signal">Signal</option>
           </select>
+          <select value={filter.trade_account_type ?? 'all'} onChange={e => setFilter(f => ({ ...f, trade_account_type: e.target.value as TradeFilter['trade_account_type'] }))} className={sel}>
+            <option value="all">Semua Akun</option>
+            <option value="spot">Spot</option><option value="futures">Futures</option><option value="margin">Margin</option>
+          </select>
         </div>
       </div>
 
@@ -117,7 +123,7 @@ export default function TradesPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#2a2a3a]">
-                  {['Tanggal','Pair','Side','Mode','Strategy','TF','Entry','Exit','P/L (Net)','Fee','Hasil','Aksi'].map(h => (
+                  {['Tanggal','Pair','Side','Mode','Akun','Strategy','TF','Entry','Exit','P/L (Net)','Fee','Hasil','Aksi'].map(h => (
                     <th key={h} className="text-left text-gray-400 text-xs font-medium uppercase tracking-wider px-4 py-3 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -137,6 +143,7 @@ export default function TradesPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{t.mode}</td>
+                    <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{formatTradeAccountType(t.trade_account_type)}</td>
                     <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap max-w-[120px] truncate">{t.strategy_name ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{t.timeframe ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-300 font-mono text-xs whitespace-nowrap">{Number(t.entry_price).toLocaleString()}</td>

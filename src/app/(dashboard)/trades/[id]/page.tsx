@@ -9,6 +9,7 @@ import {
   getScreenshotStoragePath,
   type StoredScreenshot,
 } from '@/lib/supabase/storage'
+import { formatTradeAccountType } from '@/types/trade-account'
 import { toast } from 'sonner'
 import type { Trade, TradePsychology } from '@/types/trade'
 
@@ -106,6 +107,9 @@ export default function TradeDetailPage() {
               {trade.position_type?.toUpperCase()}
             </span>
             <span className="text-xs bg-[#1e1e2e] text-gray-400 px-2 py-1 rounded-lg">{trade.mode}</span>
+            <span className="text-xs bg-blue-500/10 text-blue-300 px-2 py-1 rounded-lg border border-blue-500/20">
+              {formatTradeAccountType(trade.trade_account_type)}
+            </span>
             {trade.result && (
               <span className={`text-xs font-bold px-2 py-1 rounded-lg border ${
                 trade.result === 'win' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
@@ -146,6 +150,8 @@ export default function TradeDetailPage() {
       {/* Trade Details */}
       <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl p-4">
         <h3 className="text-gray-300 text-xs font-semibold uppercase tracking-wider mb-3">Detail Trade</h3>
+        <Row label="Market" value={trade.market_type} />
+        <Row label="Jenis Akun" value={formatTradeAccountType(trade.trade_account_type)} />
         <Row label="Exchange" value={trade.exchange} />
         <Row label="Strategy" value={trade.strategy_name} />
         <Row label="Setup" value={trade.setup_type} />

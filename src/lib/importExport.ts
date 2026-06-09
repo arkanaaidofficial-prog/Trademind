@@ -3,9 +3,11 @@
 
 import type { Trade } from '@/types/trade';
 
+const TRADE_ACCOUNT_VALUES = ['spot', 'futures', 'margin'];
+
 // ─── CSV TEMPLATE HEADERS ─────────────────────────────────────
 export const CSV_HEADERS = [
-  'symbol', 'market_type', 'exchange', 'position_type', 'mode',
+  'symbol', 'market_type', 'trade_account_type', 'exchange', 'position_type', 'mode',
   'strategy_name', 'setup_type', 'timeframe',
   'entry_at', 'exit_at',
   'entry_price', 'exit_price',
@@ -20,11 +22,11 @@ export const CSV_HEADERS = [
 ];
 
 export const CSV_TEMPLATE_ROW = [
-  'BTCUSDT', 'crypto', 'Binance', 'long', 'manual',
+  'BTCUSDT', 'crypto', 'spot', 'Binance', 'long', 'manual',
   'Breakout', 'breakout', '4H',
   '2025-06-07 09:00', '2025-06-07 12:00',
   '67000', '68500',
-  '0.05', '5',
+  '0.05', '1',
   '66000', '69000',
   '50', '2',
   '12', '0',
@@ -77,10 +79,15 @@ export function parseCsvToTrades(
         errors.push({ row: i + 1, message: 'position_type must be "long" or "short"' }); continue;
       }
 
+      const tradeAccountType = TRADE_ACCOUNT_VALUES.includes(row.trade_account_type)
+        ? row.trade_account_type
+        : 'spot';
+
       const trade: Partial<Trade> = {
         user_id: userId,
         symbol: row.symbol.toUpperCase(),
         market_type: (row.market_type as Trade['market_type']) || 'crypto',
+        trade_account_type: tradeAccountType as Trade['trade_account_type'],
         exchange: row.exchange || undefined,
         position_type: row.position_type as Trade['position_type'],
         mode: (row.mode as Trade['mode']) || 'manual',
@@ -92,13 +99,13 @@ export function parseCsvToTrades(
         entry_price: +row.entry_price,
         exit_price: row.exit_price ? +row.exit_price : undefined,
         position_size: row.position_size ? +row.position_size : undefined,
-        leverage: row.leverage ? +row.leverage : 1,
+        leverage: row.leverage ? +row.leverage : tradeAccountType === 'spot' ? 1 : undefined,
         stop_loss: row.stop_loss ? +row.stop_loss : undefined,
         take_profit: row.take_profit ? +row.take_profit : undefined,
         risk_amount: row.risk_amount ? +row.risk_amount : undefined,
         risk_percent: row.risk_percent ? +row.risk_percent : undefined,
         fee: row.fee ? +row.fee : 0,
-        funding_fee: row.funding_fee ? +row.funding_fee : 0,
+        funding_fee: tradeAccountType === 'spot' ? 0 : row.funding_fee ? +row.funding_fee : 0,
         gross_pnl: row.gross_pnl ? +row.gross_pnl : undefined,
         net_pnl: row.net_pnl ? +row.net_pnl : undefined,
         result: (row.result as Trade['result']) || undefined,
@@ -152,7 +159,7 @@ export function tradesToCsv(trades: Trade[]): string {
   const header = CSV_HEADERS.join(',');
   const rows = trades.map(t => {
     const values = [
-      t.symbol, t.market_type, t.exchange ?? '', t.position_type, t.mode,
+      t.symbol, t.market_type, t.trade_account_type ?? 'spot', t.exchange ?? '', t.position_type, t.mode,
       t.strategy_name ?? '', t.setup_type ?? '', t.timeframe ?? '',
       t.entry_at, t.exit_at ?? '',
       t.entry_price, t.exit_price ?? '',

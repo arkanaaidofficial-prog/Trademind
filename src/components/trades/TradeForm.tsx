@@ -10,6 +10,7 @@ import {
   type StoredScreenshot,
 } from '@/lib/supabase/storage'
 import { tradeFormSchema } from '@/lib/validators/tradeSchema'
+import { TRADE_ACCOUNT_TYPES, formatTradeAccountType, type TradeAccountType } from '@/types/trade-account'
 import { toast } from 'sonner'
 import type { Trade } from '@/types/trade'
 import { useRuleViolations } from '@/hooks/useRuleViolations'
@@ -19,6 +20,7 @@ const TIMEFRAMES = ['1m','5m','15m','30m','1H','4H','1D','1W']
 const SETUPS     = ['breakout','pullback','trend_following','reversal','scalping','news','range','other']
 const EMOTIONS   = ['tenang','takut','FOMO','serakah','ragu','revenge_trading','percaya_diri_berlebihan','percaya_diri']
 const CONDITIONS = ['trending','ranging','volatile','low_volume','high_volume']
+const ACCOUNT_TYPE_OPTIONS = TRADE_ACCOUNT_TYPES.map(value => ({ value, label: formatTradeAccountType(value) }))
 
 const inp = 'w-full bg-[#1a1a2a] border border-[#2a2a3a] text-gray-200 text-sm px-3 py-2.5 rounded-xl focus:outline-none focus:border-blue-500 transition-colors placeholder:text-gray-600'
 const sel = inp + ' cursor-pointer'
@@ -39,6 +41,16 @@ const STEPS = [
   { label: 'Catatan',   desc: 'Review & foto'   },
   { label: 'Psikologi', desc: 'Kondisi mental'  },
 ]
+
+function isMissingTradeAccountTypeColumn(message?: string) {
+  const text = message?.toLowerCase() ?? ''
+  return text.includes('trade_account_type') && (text.includes('schema cache') || text.includes('column'))
+}
+
+function omitTradeAccountType<T extends { trade_account_type?: unknown }>(payload: T) {
+  const { trade_account_type: _tradeAccountType, ...rest } = payload
+  return rest
+}
 
 export default function TradeForm({ trade, userId, mode }: Props) {
   const router = useRouter()
@@ -70,6 +82,7 @@ export default function TradeForm({ trade, userId, mode }: Props) {
   const [form, setForm] = useState({
     symbol:              trade?.symbol           ?? '',
     market_type:         trade?.market_type      ?? 'crypto',
+    trade_account_type:  trade?.trade_account_type ?? 'spot',
     exchange:            trade?.exchange         ?? '',
     position_type:       trade?.position_type    ?? 'long',
     mode:                trade?.mode             ?? 'manual',
@@ -111,6 +124,15 @@ export default function TradeForm({ trade, userId, mode }: Props) {
 
   function set(key: string, value: unknown) {
     setForm(f => ({ ...f, [key]: value }))
+  }
+
+  function setAccountType(value: TradeAccountType) {
+    setForm(f => ({
+      ...f,
+      trade_account_type: value,
+      leverage: value === 'spot' ? 1 : f.leverage,
+      funding_fee: value === 'spot' ? '' : f.funding_fee,
+    }))
   }
 
   // ── Rule violations — computed from form values ────────────
@@ -203,6 +225,7 @@ export default function TradeForm({ trade, userId, mode }: Props) {
       user_id:        userId,
       symbol:         form.symbol.toUpperCase().trim(),
       market_type:    form.market_type,
+      trade_account_type: form.trade_account_type,
       exchange:       form.exchange        || null,
       position_type:  form.position_type,
       mode:           form.mode,
@@ -216,13 +239,13 @@ export default function TradeForm({ trade, userId, mode }: Props) {
       entry_price:    Number(form.entry_price),
       exit_price:     form.exit_price     ? Number(form.exit_price)    : null,
       position_size:  form.position_size  ? Number(form.position_size) : null,
-      leverage:       Number(form.leverage) || 1,
+      leverage:       form.trade_account_type === 'spot' ? 1 : Number(form.leverage) || 1,
       stop_loss:      form.stop_loss      ? Number(form.stop_loss)     : null,
       take_profit:    form.take_profit    ? Number(form.take_profit)   : null,
       risk_amount:    form.risk_amount    ? Number(form.risk_amount)   : null,
       risk_percent:   form.risk_percent   ? Number(form.risk_percent)  : null,
       fee:            form.fee            ? Number(form.fee)           : 0,
-      funding_fee:    form.funding_fee    ? Number(form.funding_fee)   : 0,
+      funding_fee:    form.trade_account_type === 'spot' ? 0 : form.funding_fee ? Number(form.funding_fee) : 0,
       gross_pnl:      form.gross_pnl      ? Number(form.gross_pnl)    : null,
       net_pnl:        form.net_pnl        ? Number(form.net_pnl)       : null,
       result:         form.result         || null,
@@ -242,15 +265,32 @@ export default function TradeForm({ trade, userId, mode }: Props) {
     }
 
     let tradeId = trade?.id
+    let savedWithoutAccountType = false
+
     if (mode === 'add') {
-      const { data, error } = await supabase.from('trades').insert(tradePayload).select().single()
+      let { data, error } = await supabase.from('trades').insert(tradePayload).select().single()
+      if (error && isMissingTradeAccountTypeColumn(error.message)) {
+        savedWithoutAccountType = true
+        const fallback = await supabase.from('trades').insert(omitTradeAccountType(tradePayload)).select().single()
+        data = fallback.data
+        error = fallback.error
+      }
       if (error) { toast.error('Gagal: ' + error.message); setSaving(false); return }
       tradeId = data.id
     } else {
-      const { error } = await supabase
+      const updatePayload = { ...tradePayload, updated_at: new Date().toISOString() }
+      let { error } = await supabase
         .from('trades')
-        .update({ ...tradePayload, updated_at: new Date().toISOString() })
+        .update(updatePayload)
         .eq('id', trade!.id!)
+      if (error && isMissingTradeAccountTypeColumn(error.message)) {
+        savedWithoutAccountType = true
+        const fallback = await supabase
+          .from('trades')
+          .update(omitTradeAccountType(updatePayload))
+          .eq('id', trade!.id!)
+        error = fallback.error
+      }
       if (error) { toast.error('Gagal: ' + error.message); setSaving(false); return }
     }
 
@@ -270,7 +310,9 @@ export default function TradeForm({ trade, userId, mode }: Props) {
       }, { onConflict: 'trade_id' })
     }
 
-    if (violations.length > 0) {
+    if (savedWithoutAccountType) {
+      toast.warning('Trade disimpan, tetapi kolom spot/futures belum aktif di database')
+    } else if (violations.length > 0) {
       toast.warning(`Trade disimpan dengan ${violations.length} catatan pelanggaran rules`)
     } else {
       toast.success(mode === 'add' ? 'Trade berhasil ditambahkan!' : 'Trade diupdate!')
@@ -278,6 +320,11 @@ export default function TradeForm({ trade, userId, mode }: Props) {
     router.push(tradeId ? `/trades/${tradeId}` : '/trades')
     router.refresh()
   }
+
+  const isSpotTrade = form.trade_account_type === 'spot'
+  const sideOptions = isSpotTrade
+    ? [{ value: 'long', label: 'BUY' }, { value: 'short', label: 'SELL' }]
+    : [{ value: 'long', label: 'LONG' }, { value: 'short', label: 'SHORT' }]
 
   // ── Render ─────────────────────────────────────────────────
   return (
@@ -342,15 +389,15 @@ export default function TradeForm({ trade, userId, mode }: Props) {
               <div>
                 <label className={lbl}>Side *</label>
                 <div className="grid grid-cols-2 gap-2 mt-1">
-                  {['long','short'].map(v => (
-                    <button key={v} type="button" onClick={() => set('position_type', v)}
+                  {sideOptions.map(({ value, label }) => (
+                    <button key={value} type="button" onClick={() => set('position_type', value)}
                       className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                        form.position_type === v
-                          ? v === 'long'
+                        form.position_type === value
+                          ? value === 'long'
                             ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
                             : 'bg-red-500/20 border-red-500/50 text-red-400'
                           : 'border-[#2a2a3a] text-gray-500'
-                      }`}>{v.toUpperCase()}</button>
+                      }`}>{label}</button>
                   ))}
                 </div>
               </div>
@@ -379,6 +426,20 @@ export default function TradeForm({ trade, userId, mode }: Props) {
                 <label className={lbl}>Exchange</label>
                 <input className={inp} value={form.exchange}
                   onChange={e => set('exchange', e.target.value)} placeholder="Binance" />
+              </div>
+            </div>
+
+            <div>
+              <label className={lbl}>Jenis Akun</label>
+              <div className="grid grid-cols-3 gap-2">
+                {ACCOUNT_TYPE_OPTIONS.map(({ value, label }) => (
+                  <button key={value} type="button" onClick={() => setAccountType(value)}
+                    className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                      form.trade_account_type === value
+                        ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+                        : 'border-[#2a2a3a] text-gray-500'
+                    }`}>{label}</button>
+                ))}
               </div>
             </div>
 
@@ -489,8 +550,9 @@ export default function TradeForm({ trade, userId, mode }: Props) {
               </div>
               <div>
                 <label className={lbl}>Leverage (x)</label>
-                <input type="number" min={1} max={200} className={inp} value={form.leverage}
-                  onChange={e => set('leverage', e.target.value)} />
+                <input type="number" min={1} max={200} disabled={isSpotTrade}
+                  className={inp + (isSpotTrade ? ' opacity-60 cursor-not-allowed' : '')}
+                  value={form.leverage} onChange={e => set('leverage', e.target.value)} />
               </div>
             </div>
           </div>
@@ -510,7 +572,9 @@ export default function TradeForm({ trade, userId, mode }: Props) {
               </div>
               <div>
                 <label className={lbl}>Funding Fee ($)</label>
-                <input type="number" step="any" className={inp} value={form.funding_fee}
+                <input type="number" step="any" disabled={isSpotTrade}
+                  className={inp + (isSpotTrade ? ' opacity-60 cursor-not-allowed' : '')}
+                  value={isSpotTrade ? '' : form.funding_fee}
                   onChange={e => handlePnlChange('funding_fee', e.target.value)} placeholder="0" />
               </div>
               <div>

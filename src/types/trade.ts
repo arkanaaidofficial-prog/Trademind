@@ -1,6 +1,8 @@
 // src/types/trade.ts
 // Core domain types for TradeMind Journal
 
+import type { TradeAccountType } from './trade-account';
+
 export type MarketType = 'crypto' | 'forex' | 'saham' | 'futures' | 'other';
 export type PositionType = 'long' | 'short';
 export type TradeMode = 'manual' | 'bot' | 'copytrade' | 'signal';
@@ -18,6 +20,7 @@ export interface Trade {
 
   // Classification
   market_type: MarketType;
+  trade_account_type?: TradeAccountType;
   exchange?: string;
   symbol: string;
   position_type: PositionType;
@@ -226,6 +229,7 @@ export interface PerformanceByDimension {
 export interface TradeFilter {
   symbol?: string;
   market_type?: MarketType | 'all';
+  trade_account_type?: TradeAccountType | 'all';
   mode?: TradeMode | 'all';
   result?: TradeResult | 'all';
   strategy_name?: string;
