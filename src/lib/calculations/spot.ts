@@ -100,14 +100,15 @@ export function calculateSpotHoldings(trades: Trade[]): SpotHolding[] {
       const sellQty = Math.min(qty, current.quantity)
       const avgCost = current.quantity > 0 ? current.remaining_cost / current.quantity : 0
       const releasedCost = avgCost * sellQty
-      const proceeds = qty * price
+      const proceeds = sellQty * price
+      const sellFee = sellQty > 0 ? fee * (sellQty / qty) : fee
 
       current.realized_pnl += sellQty > 0
-        ? proceeds - releasedCost - fee
+        ? proceeds - releasedCost - sellFee
         : Number(trade.net_pnl ?? 0)
       current.quantity -= sellQty
       current.remaining_cost -= releasedCost
-      current.sell_qty += qty
+      current.sell_qty += sellQty
       current.sell_trades += 1
 
       if (current.quantity <= 0.00000001) {
