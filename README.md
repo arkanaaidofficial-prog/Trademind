@@ -32,14 +32,14 @@ npm install
 cp .env.example .env.local
 # Isi NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-# Jalankan schema di Supabase SQL Editor
-# Buka: supabase/schema.sql → copy → paste di Supabase Dashboard > SQL Editor > Run
+# Database baru:
+# Buka supabase/schema.sql -> copy -> paste di Supabase Dashboard > SQL Editor > Run
+
+# Database lama yang sudah pernah dibuat:
+# Jalankan file di supabase/migrations secara berurutan sesuai kebutuhan.
 
 # Jika sudah pernah upload screenshot sebelum private storage patch,
 # jalankan juga supabase/storage-legacy-path-policy.sql agar path lama tetap bisa dibaca.
-
-# Untuk fitur Coin Watchlist, jalankan migration ini di Supabase SQL Editor:
-# supabase/migrations/20260610_add_coin_watchlist.sql
 
 # Dev server
 npm run dev

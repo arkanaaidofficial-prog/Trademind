@@ -58,6 +58,7 @@ create table trades (
   exchange      text,
   symbol        text not null,
   position_type text check (position_type in ('long','short')) not null,
+  trade_account_type text check (trade_account_type in ('spot','futures','margin')) default 'spot',
   mode          text check (mode in ('manual','bot','copytrade','signal')) default 'manual',
 
   bot_id        uuid references bot_configs(id) on delete set null,
@@ -112,6 +113,39 @@ create table trades (
 
   created_at    timestamptz default now(),
   updated_at    timestamptz default now()
+);
+
+-- COIN WATCHLIST
+create table coin_watchlist (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+
+  symbol text not null,
+  market_type text not null default 'crypto' check (market_type in ('crypto','forex','saham','futures','other')),
+
+  source_type text not null default 'manual' check (source_type in ('telegram','whatsapp','twitter','youtube','news','manual','other')),
+  source_name text,
+  source_url text,
+
+  watch_status text not null default 'watching' check (watch_status in ('watching','planned','entered','skipped','archived')),
+  priority text not null default 'medium' check (priority in ('low','medium','high')),
+  conviction_score integer not null default 5 check (conviction_score between 1 and 10),
+
+  current_price numeric(20,8),
+  planned_entry numeric(20,8),
+  target_price numeric(20,8),
+  stop_loss numeric(20,8),
+
+  thesis text,
+  risk_notes text,
+  tags text[] not null default '{}'::text[],
+
+  added_at timestamptz not null default now(),
+  last_reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+
+  constraint coin_watchlist_symbol_not_blank check (length(trim(symbol)) > 0)
 );
 
 -- TRADE PSYCHOLOGY
@@ -246,7 +280,11 @@ create index idx_trades_entry_at       on trades(entry_at desc);
 create index idx_trades_symbol         on trades(symbol);
 create index idx_trades_result         on trades(result);
 create index idx_trades_mode           on trades(mode);
+create index idx_trades_account_type   on trades(trade_account_type);
 create index idx_trades_strategy_name  on trades(strategy_name);
+create index idx_coin_watchlist_user_status on coin_watchlist(user_id, watch_status);
+create index idx_coin_watchlist_user_symbol on coin_watchlist(user_id, symbol);
+create index idx_coin_watchlist_user_source on coin_watchlist(user_id, source_type);
 create index idx_trade_psych_trade_id  on trade_psychology(trade_id);
 create index idx_trade_ss_trade_id     on trade_screenshots(trade_id);
 create index idx_trade_ss_user_trade   on trade_screenshots(user_id, trade_id);
@@ -257,6 +295,7 @@ create index idx_bot_logs_bot_id       on bot_logs(bot_id, log_date);
 alter table profiles          enable row level security;
 alter table strategies        enable row level security;
 alter table trades            enable row level security;
+alter table coin_watchlist    enable row level security;
 alter table trade_psychology  enable row level security;
 alter table trade_screenshots enable row level security;
 alter table trading_rules     enable row level security;
@@ -265,9 +304,12 @@ alter table bot_configs       enable row level security;
 alter table bot_logs          enable row level security;
 alter table imports           enable row level security;
 
+grant select, insert, update, delete on table coin_watchlist to authenticated;
+
 create policy "profiles_own"          on profiles          for all using (auth.uid() = id)      with check (auth.uid() = id);
 create policy "strategies_own"        on strategies        for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "trades_own"            on trades            for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "coin_watchlist_own"    on coin_watchlist    for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "trade_psychology_own"  on trade_psychology  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "trade_screenshots_own" on trade_screenshots for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "trading_rules_own"     on trading_rules     for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
