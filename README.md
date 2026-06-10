@@ -1,6 +1,6 @@
 # TradeMind Journal
 
-> Jurnal & evaluasi performa trading - crypto, forex, saham, futures, spot portfolio, dan bot trading.
+> Jurnal & evaluasi performa trading - crypto, forex, saham, futures, spot portfolio, watchlist, dan bot trading.
 
 ## Tech Stack
 - **Frontend**: Next.js 14 + TypeScript
@@ -13,6 +13,7 @@
 - ✅ Authentication (Supabase Auth)
 - ✅ CRUD Trade Journal (lengkap)
 - ✅ Spot Portfolio dari trade spot
+- ✅ Coin Watchlist dari Telegram, WhatsApp, Twitter/X, dan sumber manual
 - ✅ Psychology Journal per trade
 - ✅ Screenshot upload (Supabase Storage)
 - ✅ Dashboard dengan equity curve, win rate, profit factor
@@ -37,6 +38,9 @@ cp .env.example .env.local
 # Jika sudah pernah upload screenshot sebelum private storage patch,
 # jalankan juga supabase/storage-legacy-path-policy.sql agar path lama tetap bisa dibaca.
 
+# Untuk fitur Coin Watchlist, jalankan migration ini di Supabase SQL Editor:
+# supabase/migrations/20260610_add_coin_watchlist.sql
+
 # Dev server
 npm run dev
 ```
@@ -54,7 +58,7 @@ npm run dev
 src/
 ├── app/                    # Next.js App Router
 │   ├── (auth)/             # Login, Register
-│   └── (dashboard)/        # Dashboard, Trades, Spot, Analytics, Bot, Reviews, Rules
+│   └── (dashboard)/        # Dashboard, Trades, Spot, Watchlist, Analytics, Bot, Reviews, Rules
 ├── components/             # UI Components
 ├── hooks/                  # Custom React hooks
 ├── lib/
@@ -70,7 +74,7 @@ src/
 |------|-------|
 | MVP | Auth, CRUD Trade, Dashboard, Analytics dasar, Rules |
 | v1.0 | Psychology Journal, Screenshot upload, Reviews, Bot Journal, Import/Export |
-| v1.5 | Analytics Pro, Spot Portfolio, Equity simulation, Heatmap, Drawdown analysis |
+| v1.5 | Analytics Pro, Spot Portfolio, Coin Watchlist, Equity simulation, Heatmap, Drawdown analysis |
 | v2.0 | Subscription, API key untuk bot sync, AI insight |
 
 ---

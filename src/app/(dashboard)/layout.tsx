@@ -19,6 +19,10 @@ const NAV = [
     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4"><path d="M3 7h18v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/><path d="M16 7V5a4 4 0 00-8 0v2"/><path d="M8 13h8M8 17h5"/></svg>
   },
   {
+    href: '/watchlist', label: 'Watchlist',
+    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4"><path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 16.9l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3z"/></svg>
+  },
+  {
     href: '/analytics', label: 'Analytics',
     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
   },
