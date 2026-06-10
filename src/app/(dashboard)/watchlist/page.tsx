@@ -105,6 +105,32 @@ function priceUpside(item: CoinWatchlistItem) {
   return ((target - entry) / entry) * 100
 }
 
+function buildTradeHref(item: CoinWatchlistItem) {
+  const params = new URLSearchParams()
+  params.set('symbol', item.symbol)
+  params.set('market_type', item.market_type)
+  params.set('trade_account_type', item.market_type === 'futures' ? 'futures' : 'spot')
+  params.set('mode', 'signal')
+
+  const entryPrice = item.planned_entry ?? item.current_price
+  if (entryPrice !== null && entryPrice !== undefined) params.set('entry_price', String(entryPrice))
+  if (item.target_price !== null && item.target_price !== undefined) params.set('take_profit', String(item.target_price))
+  if (item.stop_loss !== null && item.stop_loss !== undefined) params.set('stop_loss', String(item.stop_loss))
+
+  const sourceLabel = WATCH_SOURCE_LABELS[item.source_type]
+  const sourceText = [sourceLabel, item.source_name].filter(Boolean).join(' - ')
+  const entryReason = [
+    sourceText ? `Sumber watchlist: ${sourceText}` : '',
+    item.thesis ? `Thesis: ${item.thesis}` : '',
+    item.risk_notes ? `Risk: ${item.risk_notes}` : '',
+  ].filter(Boolean).join('\n')
+
+  if (entryReason) params.set('entry_reason', entryReason.slice(0, 1000))
+  if (item.id) params.set('watchlist_id', item.id)
+
+  return `/trades/new?${params.toString()}`
+}
+
 function statusClass(status: WatchStatus) {
   return {
     watching: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
@@ -581,7 +607,7 @@ export default function CoinWatchlistPage() {
                           </td>
                           <td className="px-4 py-4 min-w-[230px]">
                             <div className="flex flex-wrap gap-2">
-                              <Link href="/trades/new" className="inline-flex items-center gap-1 rounded-lg bg-emerald-600/15 px-2.5 py-1.5 text-xs font-bold text-emerald-400 hover:bg-emerald-600/25">
+                              <Link href={buildTradeHref(item)} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600/15 px-2.5 py-1.5 text-xs font-bold text-emerald-400 hover:bg-emerald-600/25">
                                 <CheckCircle2 className="w-3.5 h-3.5" /> Trade
                               </Link>
                               <button type="button" onClick={() => startEdit(item)} className="inline-flex items-center gap-1 rounded-lg bg-blue-600/15 px-2.5 py-1.5 text-xs font-bold text-blue-400 hover:bg-blue-600/25">
