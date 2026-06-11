@@ -38,6 +38,20 @@ function ScoreBar({ score, color }: { score: number; color: string }) {
   )
 }
 
+function isSpotTrade(trade: Trade) {
+  return (trade.trade_account_type ?? 'spot') === 'spot'
+}
+
+function tradeSideLabel(trade: Trade) {
+  if (isSpotTrade(trade)) return trade.position_type === 'long' ? 'BUY' : 'SELL'
+  return trade.position_type?.toUpperCase() ?? '-'
+}
+
+function formatPnl(value?: number | null) {
+  if (value === null || value === undefined) return '—'
+  return `${value >= 0 ? '+' : ''}$${value}`
+}
+
 export default function TradeDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
@@ -50,8 +64,35 @@ export default function TradeDetailPage() {
   useEffect(() => {
     async function load() {
       const supabase = createClient()
-      const { data: t } = await supabase.from('trades').select('*').eq('id', id).single()
-      const { data: p } = await supabase.from('trade_psychology').select('*').eq('trade_id', id).single()
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError || !user) {
+        if (userError) toast.error('Gagal membaca user aktif')
+        setLoading(false)
+        return
+      }
+
+      const { data: t, error: tradeError } = await supabase
+        .from('trades')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single()
+
+      if (tradeError || !t) {
+        setTrade(null)
+        setPsych(null)
+        setScreenshots([])
+        setLoading(false)
+        return
+      }
+
+      const { data: p } = await supabase
+        .from('trade_psychology')
+        .select('*')
+        .eq('trade_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
       setTrade(t)
       setPsych(p)
 
@@ -74,15 +115,30 @@ export default function TradeDetailPage() {
   async function handleDelete() {
     if (!confirm('Hapus trade ini? Tidak bisa dikembalikan.')) return
     const supabase = createClient()
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      toast.error('Gagal membaca user aktif')
+      return
+    }
+
     const storagePaths = screenshots
       .map(getScreenshotStoragePath)
       .filter((path): path is string => Boolean(path))
 
     if (storagePaths.length > 0) {
-      await supabase.storage.from(TRADE_SCREENSHOTS_BUCKET).remove(storagePaths)
+      const { error: storageError } = await supabase.storage.from(TRADE_SCREENSHOTS_BUCKET).remove(storagePaths)
+      if (storageError) {
+        toast.error('Gagal menghapus screenshot')
+        return
+      }
     }
 
-    await supabase.from('trades').delete().eq('id', id)
+    const { error } = await supabase.from('trades').delete().eq('id', id).eq('user_id', user.id)
+    if (error) {
+      toast.error('Gagal menghapus trade')
+      return
+    }
+
     toast.success('Trade dihapus')
     router.push('/trades')
   }
@@ -90,7 +146,9 @@ export default function TradeDetailPage() {
   if (loading) return <div className="flex items-center justify-center h-full"><p className="text-gray-400 animate-pulse text-sm">Memuat...</p></div>
   if (!trade) return <div className="flex items-center justify-center h-full"><p className="text-gray-400 text-sm">Trade tidak ditemukan</p></div>
 
+  const spotTrade = isSpotTrade(trade)
   const pnl = trade.net_pnl ?? 0
+  const hasPnl = trade.net_pnl !== null && trade.net_pnl !== undefined
   const duration = trade.entry_at && trade.exit_at
     ? Math.round((new Date(trade.exit_at).getTime() - new Date(trade.entry_at).getTime()) / 60000)
     : null
@@ -104,7 +162,7 @@ export default function TradeDetailPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-white font-bold text-xl">{trade.symbol}</h1>
             <span className={`text-xs font-bold px-2 py-1 rounded-lg ${trade.position_type === 'long' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-              {trade.position_type?.toUpperCase()}
+              {tradeSideLabel(trade)}
             </span>
             <span className="text-xs bg-[#1e1e2e] text-gray-400 px-2 py-1 rounded-lg">{trade.mode}</span>
             <span className="text-xs bg-blue-500/10 text-blue-300 px-2 py-1 rounded-lg border border-blue-500/20">
@@ -125,8 +183,8 @@ export default function TradeDetailPage() {
           </p>
         </div>
         <div className="text-right flex-shrink-0">
-          <p className={`text-2xl font-bold font-mono ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {pnl >= 0 ? '+' : ''}${pnl}
+          <p className={`text-2xl font-bold font-mono ${!hasPnl ? 'text-gray-400' : pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {formatPnl(trade.net_pnl)}
           </p>
           <p className="text-gray-500 text-xs">Net P/L</p>
         </div>
@@ -157,14 +215,14 @@ export default function TradeDetailPage() {
         <Row label="Setup" value={trade.setup_type} />
         <Row label="Timeframe" value={trade.timeframe} />
         <Row label="Market Condition" value={trade.market_condition} />
-        <Row label="Position Size" value={trade.position_size} mono />
-        <Row label="Leverage" value={trade.leverage ? `${trade.leverage}x` : null} />
+        <Row label={spotTrade ? 'Quantity' : 'Position Size'} value={trade.position_size} mono />
+        {!spotTrade && <Row label="Leverage" value={trade.leverage ? `${trade.leverage}x` : null} />}
         <Row label="Stop Loss" value={trade.stop_loss ? Number(trade.stop_loss).toLocaleString() : null} mono />
         <Row label="Take Profit" value={trade.take_profit ? Number(trade.take_profit).toLocaleString() : null} mono />
         <Row label="Risk Amount" value={trade.risk_amount ? `$${trade.risk_amount}` : null} mono />
         <Row label="Risk %" value={trade.risk_percent ? `${trade.risk_percent}%` : null} />
         <Row label="R-Multiple" value={trade.r_multiple ? `${trade.r_multiple}R` : null} />
-        <Row label="Funding Fee" value={trade.funding_fee ? `$${trade.funding_fee}` : '$0'} mono />
+        {!spotTrade && <Row label="Funding Fee" value={trade.funding_fee ? `$${trade.funding_fee}` : '$0'} mono />}
         {trade.bot_name && <Row label="Bot" value={`${trade.bot_name}${trade.bot_version ? ` ${trade.bot_version}` : ''}`} />}
       </div>
 

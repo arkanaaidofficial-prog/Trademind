@@ -8,10 +8,27 @@ import { formatTradeAccountType } from '@/types/trade-account'
 import { toast } from 'sonner'
 import { Icons } from '@/components/ui/Icons'
 
-function Badge({ result }: { result?: string }) {
+function ResultBadge({ result }: { result?: string | null }) {
   if (result === 'win')  return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">WIN</span>
   if (result === 'loss') return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30">LOSS</span>
-  return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-500/20 text-gray-400 border border-gray-500/30">BE</span>
+  if (result === 'breakeven') return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-500/20 text-gray-400 border border-gray-500/30">BE</span>
+  return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-500/10 text-slate-400 border border-slate-500/20">OPEN</span>
+}
+
+function tradeSideLabel(trade: Trade) {
+  const isSpot = (trade.trade_account_type ?? 'spot') === 'spot'
+  if (isSpot) return trade.position_type === 'long' ? 'BUY' : 'SELL'
+  return trade.position_type?.toUpperCase() ?? '-'
+}
+
+function netPnlClass(value?: number | null) {
+  if (value === null || value === undefined) return 'text-gray-500'
+  return value >= 0 ? 'text-emerald-400' : 'text-red-400'
+}
+
+function formatNetPnl(value?: number | null) {
+  if (value === null || value === undefined) return '—'
+  return `${value >= 0 ? '+' : ''}${value}`
 }
 
 const sel = 'bg-[#1a1a2a] border border-[#2a2a3a] text-gray-300 text-xs px-3 py-2 rounded-lg focus:outline-none focus:border-blue-500 cursor-pointer'
@@ -25,11 +42,21 @@ export default function TradesPage() {
 
   async function load() {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      if (userError) toast.error('Gagal membaca user aktif')
+      setLoading(false)
+      return
+    }
+
     const { data, error } = await supabase
       .from('trades').select('*').eq('user_id', user.id).order('entry_at', { ascending: false })
-    if (error) { toast.error('Gagal memuat trades'); return }
+    if (error) {
+      toast.error('Gagal memuat trades')
+      setLoading(false)
+      return
+    }
+
     setTrades(data ?? [])
     setLoading(false)
   }
@@ -139,7 +166,7 @@ export default function TradesPage() {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className={`text-xs font-bold ${t.position_type === 'long' ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {t.position_type?.toUpperCase()}
+                        {tradeSideLabel(t)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{t.mode}</td>
@@ -148,11 +175,11 @@ export default function TradesPage() {
                     <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{t.timeframe ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-300 font-mono text-xs whitespace-nowrap">{Number(t.entry_price).toLocaleString()}</td>
                     <td className="px-4 py-3 text-gray-300 font-mono text-xs whitespace-nowrap">{t.exit_price ? Number(t.exit_price).toLocaleString() : '—'}</td>
-                    <td className={`px-4 py-3 font-bold font-mono text-sm whitespace-nowrap ${(t.net_pnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {(t.net_pnl ?? 0) >= 0 ? '+' : ''}{t.net_pnl ?? 0}
+                    <td className={`px-4 py-3 font-bold font-mono text-sm whitespace-nowrap ${netPnlClass(t.net_pnl)}`}>
+                      {formatNetPnl(t.net_pnl)}
                     </td>
                     <td className="px-4 py-3 text-gray-500 font-mono text-xs whitespace-nowrap">{t.fee ?? 0}</td>
-                    <td className="px-4 py-3 whitespace-nowrap"><Badge result={t.result} /></td>
+                    <td className="px-4 py-3 whitespace-nowrap"><ResultBadge result={t.result} /></td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Link href={`/trades/${t.id}/edit`} className="flex items-center gap-1 text-gray-400 hover:text-blue-400 text-xs transition-colors">
