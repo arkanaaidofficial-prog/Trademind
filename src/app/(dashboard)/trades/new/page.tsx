@@ -4,10 +4,16 @@ import { createClient } from '@/lib/supabase/client'
 import TradeForm from '@/components/trades/TradeForm'
 import type { MarketType, Trade, TradeMode } from '@/types/trade'
 import type { TradeAccountType } from '@/types/trade-account'
+import { PENDING_WATCHLIST_ENTRY_KEY, serializePendingWatchlistEntry } from '@/lib/watchlist/pending'
 
 const MARKET_TYPES: MarketType[] = ['crypto', 'forex', 'saham', 'futures', 'other']
 const TRADE_MODES: TradeMode[] = ['manual', 'bot', 'copytrade', 'signal']
 const ACCOUNT_TYPES: TradeAccountType[] = ['spot', 'futures', 'margin']
+
+type PrefillState = {
+  trade: Partial<Trade>
+  watchlistId?: string
+}
 
 function pick<T extends string>(value: string | null, allowed: T[], fallback: T) {
   return value && allowed.includes(value as T) ? value as T : fallback
@@ -20,14 +26,14 @@ function numberParam(params: URLSearchParams, key: string) {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
-function readPrefillFromLocation(): Partial<Trade> | undefined {
+function readPrefillFromLocation(): PrefillState | undefined {
   if (typeof window === 'undefined') return undefined
 
   const params = new URLSearchParams(window.location.search)
   const hasPrefill = ['symbol', 'entry_price', 'take_profit', 'stop_loss', 'entry_reason'].some(key => params.has(key))
   if (!hasPrefill) return undefined
 
-  return {
+  const trade: Partial<Trade> = {
     symbol: params.get('symbol')?.toUpperCase() ?? '',
     market_type: pick(params.get('market_type'), MARKET_TYPES, 'crypto'),
     trade_account_type: pick(params.get('trade_account_type'), ACCOUNT_TYPES, 'spot'),
@@ -38,15 +44,32 @@ function readPrefillFromLocation(): Partial<Trade> | undefined {
     stop_loss: numberParam(params, 'stop_loss'),
     entry_reason: params.get('entry_reason') ?? undefined,
   }
+
+  return {
+    trade,
+    watchlistId: params.get('watchlist_id') ?? undefined,
+  }
 }
 
 export default function NewTradePage() {
   const [userId, setUserId] = useState<string | null>(null)
-  const [prefill, setPrefill] = useState<Partial<Trade> | undefined>()
+  const [prefill, setPrefill] = useState<PrefillState | undefined>()
   const [prefillReady, setPrefillReady] = useState(false)
 
   useEffect(() => {
-    setPrefill(readPrefillFromLocation())
+    const nextPrefill = readPrefillFromLocation()
+
+    if (nextPrefill?.watchlistId && nextPrefill.trade.symbol) {
+      window.sessionStorage.setItem(PENDING_WATCHLIST_ENTRY_KEY, serializePendingWatchlistEntry({
+        id: nextPrefill.watchlistId,
+        symbol: nextPrefill.trade.symbol,
+        createdAt: Date.now(),
+      }))
+    } else {
+      window.sessionStorage.removeItem(PENDING_WATCHLIST_ENTRY_KEY)
+    }
+
+    setPrefill(nextPrefill)
     setPrefillReady(true)
   }, [])
 
@@ -64,7 +87,7 @@ export default function NewTradePage() {
         <h1 className="text-white font-bold">Tambah Trade Baru</h1>
         {prefill && <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-full px-2.5 py-1">Prefill dari watchlist</span>}
       </div>
-      <TradeForm trade={prefill} userId={userId} mode="add" />
+      <TradeForm trade={prefill?.trade} userId={userId} mode="add" />
     </div>
   )
 }

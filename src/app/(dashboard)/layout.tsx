@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import PendingWatchlistMarker from '@/components/watchlist/PendingWatchlistMarker'
 import { toast } from 'sonner'
 
 const NAV = [
@@ -73,6 +74,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-screen bg-[#0a0a14] overflow-hidden">
+      <PendingWatchlistMarker />
       {mobileOpen && (
         <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setMobileOpen(false)} />
       )}
