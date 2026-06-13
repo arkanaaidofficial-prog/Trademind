@@ -82,12 +82,19 @@ export default function NewTradePage() {
   if (!userId || !prefillReady) return <div className="flex items-center justify-center h-full"><p className="text-gray-400 text-sm animate-pulse">Memuat...</p></div>
 
   return (
-    <div>
-      <div className="px-6 py-4 border-b border-[#1e1e2e] bg-[#0e0e18] flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-white font-bold">Tambah Trade Baru</h1>
-        {prefill && <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-full px-2.5 py-1">Prefill dari watchlist</span>}
+    <div className="min-h-full">
+      <div className="border-b border-[#1e1e2e] bg-[#0e0e18] px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+          <div>
+            <h1 className="text-white font-bold">Tambah Trade Baru</h1>
+            <p className="mt-1 hidden text-xs text-gray-500 lg:block">Lengkapi informasi trade secara bertahap. Data dapat ditinjau sebelum disimpan.</p>
+          </div>
+          {prefill && <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-full px-2.5 py-1">Prefill dari watchlist</span>}
+        </div>
       </div>
-      <TradeForm trade={prefill?.trade} userId={userId} mode="add" />
+      <div className="trade-form-desktop">
+        <TradeForm trade={prefill?.trade} userId={userId} mode="add" />
+      </div>
     </div>
   )
 }
