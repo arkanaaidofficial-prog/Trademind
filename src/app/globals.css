@@ -32,3 +32,141 @@
   ::-webkit-scrollbar-track { background: hsl(var(--background)); }
   ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 2px; }
 }
+
+@layer components {
+  @media (min-width: 1024px) {
+    .trade-form-desktop > div {
+      display: grid;
+      max-width: 80rem;
+      grid-template-columns: 15rem minmax(0, 1fr);
+      grid-template-rows: auto auto auto;
+      align-items: start;
+      column-gap: 1.5rem;
+      row-gap: 1.25rem;
+      padding: 1.5rem 2rem 2.5rem;
+    }
+
+    .trade-form-desktop > div > div:first-child {
+      position: sticky;
+      top: 1.5rem;
+      grid-column: 1;
+      grid-row: 1 / span 3;
+      margin-bottom: 0;
+      border: 1px solid #2a2a3a;
+      border-radius: 1rem;
+      background: #14141e;
+      padding: 1rem;
+    }
+
+    .trade-form-desktop > div > div:first-child::before {
+      display: block;
+      margin-bottom: 1rem;
+      color: #f3f4f6;
+      content: 'Progress Trade';
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    .trade-form-desktop > div > div:first-child > div:first-child {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      margin-bottom: 0;
+    }
+
+    .trade-form-desktop > div > div:first-child > div:first-child > div {
+      position: relative;
+      display: grid;
+      min-height: 4.25rem;
+      flex: none;
+      grid-template-columns: 2.5rem minmax(0, 1fr);
+      align-items: start;
+    }
+
+    .trade-form-desktop > div > div:first-child > div:first-child > div::after {
+      grid-column: 2;
+      grid-row: 1;
+      padding-top: 0.1rem;
+      color: #6b7280;
+      font-size: 0.75rem;
+      line-height: 1.35;
+      white-space: pre-line;
+    }
+
+    .trade-form-desktop > div > div:first-child > div:first-child > div:nth-child(1)::after {
+      content: 'Trade\A Info dasar';
+    }
+
+    .trade-form-desktop > div > div:first-child > div:first-child > div:nth-child(2)::after {
+      content: 'Harga\A Entry, exit, dan hasil';
+    }
+
+    .trade-form-desktop > div > div:first-child > div:first-child > div:nth-child(3)::after {
+      content: 'Catatan\A Evaluasi dan chart';
+    }
+
+    .trade-form-desktop > div > div:first-child > div:first-child > div:nth-child(4)::after {
+      content: 'Psikologi\A Kondisi mental';
+    }
+
+    .trade-form-desktop > div > div:first-child > div:first-child > div:has(> button.bg-blue-600)::after {
+      color: #93c5fd;
+      font-weight: 600;
+    }
+
+    .trade-form-desktop > div > div:first-child > div:first-child > div:has(> button.bg-emerald-500)::after {
+      color: #6ee7b7;
+    }
+
+    .trade-form-desktop > div > div:first-child > div:first-child > div > button {
+      position: relative;
+      z-index: 1;
+    }
+
+    .trade-form-desktop > div > div:first-child > div:first-child > div > [class~='h-0.5'] {
+      position: absolute;
+      top: 2rem;
+      bottom: -0.25rem;
+      left: 0.94rem;
+      width: 2px;
+      height: auto;
+      margin: 0;
+    }
+
+    .trade-form-desktop > div > div:first-child > div:nth-child(2) {
+      display: none;
+    }
+
+    .trade-form-desktop > div > div:nth-child(2) {
+      display: grid;
+      grid-column: 2;
+      grid-row: 1;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: start;
+      gap: 1rem;
+    }
+
+    .trade-form-desktop > div > div:nth-child(2) > * + * {
+      margin-top: 0 !important;
+    }
+
+    .trade-form-desktop > div > div:nth-child(2) > :only-child,
+    .trade-form-desktop > div > div:nth-child(2) > :nth-child(n + 3) {
+      grid-column: 1 / -1;
+    }
+
+    .trade-form-desktop > div > div:nth-child(3) {
+      grid-column: 2;
+      grid-row: 2;
+      margin-top: 0;
+      border-top: 1px solid #1e1e2e;
+      padding-top: 1.25rem;
+    }
+
+    .trade-form-desktop > div > button:last-child {
+      grid-column: 2;
+      grid-row: 3;
+      padding-top: 0;
+    }
+  }
+}
