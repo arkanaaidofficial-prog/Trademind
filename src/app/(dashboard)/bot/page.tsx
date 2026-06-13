@@ -195,10 +195,6 @@ export default function BotPage() {
         <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl flex flex-col items-center py-16 gap-3">
           <Icons.EmptyBot />
           <p className="text-gray-400 text-sm">Belum ada bot terdaftar</p>
-          <button onClick={() => setShowForm(true)} disabled={saving}
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60">
-            <Icons.Plus /> Tambah Bot Pertama
-          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
