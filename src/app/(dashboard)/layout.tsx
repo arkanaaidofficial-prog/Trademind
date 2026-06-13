@@ -4,6 +4,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import PendingWatchlistMarker from '@/components/watchlist/PendingWatchlistMarker'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { toast } from 'sonner'
 
 const NAV = [
@@ -50,6 +51,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname()
   const [user, setUser] = useState<{ email?: string; full_name?: string } | null>(null)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [logoutOpen, setLogoutOpen] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
@@ -67,10 +70,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [router])
 
   async function handleLogout() {
+    setLoggingOut(true)
     const supabase = createClient()
-    await supabase.auth.signOut()
+    const { error } = await supabase.auth.signOut()
+
+    if (error) {
+      toast.error('Gagal keluar. Silakan coba lagi.')
+      setLoggingOut(false)
+      return
+    }
+
+    setLogoutOpen(false)
     toast.success('Logout berhasil')
-    router.push('/login')
+    router.replace('/login')
+    router.refresh()
   }
 
   const initials = user?.full_name?.charAt(0)?.toUpperCase() ?? 'T'
@@ -78,6 +91,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex h-screen bg-[#0a0a14] overflow-hidden">
       <PendingWatchlistMarker />
+      <ConfirmDialog
+        open={logoutOpen}
+        onOpenChange={setLogoutOpen}
+        onConfirm={handleLogout}
+        loading={loggingOut}
+        title="Keluar dari TradeMind?"
+        description="Sesi akun akan diakhiri dan kamu perlu login kembali untuk membuka dashboard."
+        confirmLabel="Keluar"
+      />
+
       {mobileOpen && (
         <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setMobileOpen(false)} />
       )}
@@ -117,7 +140,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Link href="/settings" className="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-400 hover:bg-[#1a1a2a] hover:text-gray-200 text-sm transition-all">
             <SettingsIcon /> Settings
           </Link>
-          <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-gray-400 hover:bg-red-500/10 hover:text-red-400 text-sm transition-all">
+          <button
+            onClick={() => {
+              setMobileOpen(false)
+              setLogoutOpen(true)
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-gray-400 hover:bg-red-500/10 hover:text-red-400 text-sm transition-all"
+          >
             <LogoutIcon /> Logout
           </button>
           <div className="flex items-center gap-2 px-2 py-2 mt-1">
