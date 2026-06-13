@@ -7,6 +7,7 @@ import type { Trade, TradeFilter } from '@/types/trade'
 import { formatTradeAccountType } from '@/types/trade-account'
 import { toast } from 'sonner'
 import { Icons } from '@/components/ui/Icons'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 
 function ResultBadge({ result }: { result?: string | null }) {
   if (result === 'win')  return <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">WIN</span>
@@ -39,6 +40,7 @@ export default function TradesPage() {
   const [loading,  setLoading]  = useState(true)
   const [filter,   setFilter]   = useState<TradeFilter>({ result: 'all', mode: 'all', trade_account_type: 'all', symbol: '' })
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [tradeToDelete, setTradeToDelete] = useState<Trade | null>(null)
 
   async function load() {
     const supabase = createClient()
@@ -70,15 +72,22 @@ export default function TradesPage() {
     return true
   }), [trades, filter])
 
-  async function handleDelete(id: string) {
-    if (!confirm('Hapus trade ini?')) return
-    setDeleting(id)
+  async function handleDelete() {
+    if (!tradeToDelete) return
+
+    setDeleting(tradeToDelete.id)
     const supabase = createClient()
-    const { error } = await supabase.from('trades').delete().eq('id', id)
-    if (error) { toast.error('Gagal menghapus trade'); setDeleting(null); return }
+    const { error } = await supabase.from('trades').delete().eq('id', tradeToDelete.id)
+    if (error) {
+      toast.error('Gagal menghapus trade')
+      setDeleting(null)
+      return
+    }
+
     toast.success('Trade dihapus')
-    setTrades(prev => prev.filter(t => t.id !== id))
+    setTrades(prev => prev.filter(t => t.id !== tradeToDelete.id))
     setDeleting(null)
+    setTradeToDelete(null)
   }
 
   function handleExportCsv() {
@@ -91,6 +100,16 @@ export default function TradesPage() {
 
   return (
     <div className="p-6 space-y-4">
+      <ConfirmDialog
+        open={Boolean(tradeToDelete)}
+        onOpenChange={open => { if (!open) setTradeToDelete(null) }}
+        onConfirm={handleDelete}
+        loading={deleting === tradeToDelete?.id}
+        title="Hapus trade?"
+        description={<>Trade <strong className="text-gray-200">{tradeToDelete?.symbol}</strong> akan dihapus permanen dan tidak dapat dikembalikan.</>}
+        confirmLabel="Hapus Trade"
+      />
+
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-white font-bold text-lg">Trade Journal</h1>
@@ -185,7 +204,7 @@ export default function TradesPage() {
                         <Link href={`/trades/${t.id}/edit`} className="flex items-center gap-1 text-gray-400 hover:text-blue-400 text-xs transition-colors">
                           <Icons.Edit /> Edit
                         </Link>
-                        <button onClick={() => handleDelete(t.id)} disabled={deleting === t.id}
+                        <button onClick={() => setTradeToDelete(t)} disabled={deleting === t.id}
                           className="flex items-center gap-1 text-gray-400 hover:text-red-400 text-xs transition-colors disabled:opacity-40">
                           <Icons.Trash /> {deleting === t.id ? '...' : 'Hapus'}
                         </button>
