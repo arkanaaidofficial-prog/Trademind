@@ -28,7 +28,7 @@ function netPnlClass(value?: number | null) {
 }
 
 function formatNetPnl(value?: number | null) {
-  if (value === null || value === undefined) return '—'
+  if (value === null || value === undefined) return '-'
   return `${value >= 0 ? '+' : ''}${value}`
 }
 
@@ -77,7 +77,14 @@ export default function TradesPage() {
 
     setDeleting(tradeToDelete.id)
     const supabase = createClient()
-    const { error } = await supabase.from('trades').delete().eq('id', tradeToDelete.id)
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      toast.error('Gagal membaca user aktif')
+      setDeleting(null)
+      return
+    }
+
+    const { error } = await supabase.from('trades').delete().eq('id', tradeToDelete.id).eq('user_id', user.id)
     if (error) {
       toast.error('Gagal menghapus trade')
       setDeleting(null)
@@ -190,17 +197,17 @@ export default function TradesPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{t.mode}</td>
                     <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">{formatTradeAccountType(t.trade_account_type)}</td>
-                    <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap max-w-[120px] truncate">{t.strategy_name ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{t.timeframe ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap max-w-[120px] truncate">{t.strategy_name ?? '-'}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{t.timeframe ?? '-'}</td>
                     <td className="px-4 py-3 text-gray-300 font-mono text-xs whitespace-nowrap">{Number(t.entry_price).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-gray-300 font-mono text-xs whitespace-nowrap">{t.exit_price ? Number(t.exit_price).toLocaleString() : '—'}</td>
+                    <td className="px-4 py-3 text-gray-300 font-mono text-xs whitespace-nowrap">{t.exit_price ? Number(t.exit_price).toLocaleString() : '-'}</td>
                     <td className={`px-4 py-3 font-bold font-mono text-sm whitespace-nowrap ${netPnlClass(t.net_pnl)}`}>
                       {formatNetPnl(t.net_pnl)}
                     </td>
                     <td className="px-4 py-3 text-gray-500 font-mono text-xs whitespace-nowrap">{t.fee ?? 0}</td>
                     <td className="px-4 py-3 whitespace-nowrap"><ResultBadge result={t.result} /></td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         <Link href={`/trades/${t.id}/edit`} className="flex items-center gap-1 text-gray-400 hover:text-blue-400 text-xs transition-colors">
                           <Icons.Edit /> Edit
                         </Link>

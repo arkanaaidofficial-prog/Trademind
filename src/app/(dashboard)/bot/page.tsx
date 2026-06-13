@@ -10,51 +10,79 @@ const inp = 'w-full bg-[#1a1a2a] border border-[#2a2a3a] text-gray-200 text-sm p
 const lbl = 'block text-gray-400 text-xs font-medium mb-1.5'
 
 type BotWithStats = BotConfig & { trade_count: number; net_pnl: number }
+type BotTradeStat = { id?: string; net_pnl: number | null }
 
 export default function BotPage() {
   const [bots,     setBots]     = useState<BotWithStats[]>([])
   const [showForm, setShowForm] = useState(false)
+  const [loading,  setLoading]  = useState(true)
   const [saving,   setSaving]   = useState(false)
   const [form, setForm] = useState({ name:'', version:'', mode:'live', exchange:'', strategy:'', notes:'' })
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
 
   async function load() {
+    setLoading(true)
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      if (userError) toast.error('Gagal membaca user aktif')
+      setBots([])
+      setLoading(false)
+      return
+    }
 
-    const { data: botList } = await supabase
+    const { data: botList, error: botError } = await supabase
       .from('bot_configs').select('*').eq('user_id', user.id).order('created_at', { ascending: false })
 
-    if (!botList?.length) { setBots([]); return }
+    if (botError) {
+      toast.error('Gagal memuat bot')
+      setBots([])
+      setLoading(false)
+      return
+    }
 
-    // For each bot, count trades and sum P/L using bot_id OR bot_name
+    if (!botList?.length) {
+      setBots([])
+      setLoading(false)
+      return
+    }
+
     const botsWithStats: BotWithStats[] = await Promise.all(
       (botList ?? []).map(async b => {
-        const { data: trades } = await supabase.from('trades')
-          .select('net_pnl')
-          .eq('user_id', user.id)
-          .or(`bot_id.eq.${b.id},bot_name.eq.${b.name}`)
-        const t = trades ?? []
+        const [{ data: byId }, { data: byName }] = await Promise.all([
+          supabase.from('trades').select('id,net_pnl').eq('user_id', user.id).eq('bot_id', b.id),
+          supabase.from('trades').select('id,net_pnl').eq('user_id', user.id).eq('bot_name', b.name),
+        ])
+        const unique = new Map<string, BotTradeStat>()
+        ;[...(byId ?? []), ...(byName ?? [])].forEach((trade, index) => {
+          unique.set(trade.id ?? `row-${index}`, trade)
+        })
+        const trades = Array.from(unique.values())
         return {
           ...b,
-          trade_count: t.length,
-          net_pnl: parseFloat(t.reduce((s, tr) => s + (tr.net_pnl ?? 0), 0).toFixed(2)),
+          trade_count: trades.length,
+          net_pnl: parseFloat(trades.reduce((sum, trade) => sum + (trade.net_pnl ?? 0), 0).toFixed(2)),
         }
       })
     )
     setBots(botsWithStats)
+    setLoading(false)
   }
 
   useEffect(() => { load() }, [])
 
   async function handleSave() {
-    if (!form.name) { toast.error('Nama bot wajib diisi'); return }
+    if (!form.name.trim()) { toast.error('Nama bot wajib diisi'); return }
     setSaving(true)
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    const { error } = await supabase.from('bot_configs').insert({ user_id: user.id, ...form })
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      toast.error('Gagal membaca user aktif')
+      setSaving(false)
+      return
+    }
+
+    const { error } = await supabase.from('bot_configs').insert({ user_id: user.id, ...form, name: form.name.trim() })
     setSaving(false)
     if (error) { toast.error('Gagal menyimpan bot'); return }
     toast.success('Bot berhasil ditambahkan!')
@@ -63,9 +91,11 @@ export default function BotPage() {
     load()
   }
 
+  if (loading) return <div className="flex items-center justify-center h-full"><p className="text-gray-400 text-sm animate-pulse">Memuat bot...</p></div>
+
   return (
     <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-white font-bold text-lg">Bot Journal</h1>
           <p className="text-gray-400 text-xs mt-0.5">Lacak & bandingkan performa bot trading kamu</p>
@@ -132,14 +162,13 @@ export default function BotPage() {
                     <span className="text-white font-bold text-sm group-hover:text-blue-300 transition-colors">{b.name}</span>
                     {b.version && <span className="text-xs bg-[#1e1e2e] text-gray-400 px-2 py-0.5 rounded-lg">{b.version}</span>}
                   </div>
-                  <p className="text-gray-500 text-xs mt-0.5 ml-6">{b.exchange ?? '—'} · {b.strategy ?? '—'}</p>
+                  <p className="text-gray-500 text-xs mt-0.5 ml-6">{b.exchange ?? '-'} · {b.strategy ?? '-'}</p>
                 </div>
                 <span className={`text-xs px-2 py-1 rounded-lg font-bold flex-shrink-0 ${b.mode === 'live' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-500/20 text-gray-400'}`}>
                   {b.mode.toUpperCase()}
                 </span>
               </div>
 
-              {/* Mini stats */}
               <div className="grid grid-cols-2 gap-2 pt-1 border-t border-[#1e1e2e]">
                 <div>
                   <p className="text-gray-500 text-[10px] uppercase tracking-wide">Trades</p>
@@ -156,7 +185,7 @@ export default function BotPage() {
               {b.notes && <p className="text-gray-500 text-xs">{b.notes}</p>}
               <div className="flex items-center justify-between">
                 <p className="text-gray-600 text-xs">{new Date(b.created_at).toLocaleDateString('id-ID')}</p>
-                <span className="text-blue-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Lihat Detail →</span>
+                <span className="text-blue-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Lihat Detail -&gt;</span>
               </div>
             </Link>
           ))}

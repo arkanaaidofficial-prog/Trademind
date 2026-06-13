@@ -28,13 +28,17 @@ export default function ImportPage() {
   }
 
   async function handleFile(f: File) {
-    if (!f.name.endsWith('.csv')) { toast.error('Hanya file CSV yang didukung'); return }
+    if (!f.name.toLowerCase().endsWith('.csv')) { toast.error('Hanya file CSV yang didukung'); return }
     setFile(f)
     setResult(null)
     const text = await f.text()
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      toast.error('Gagal membaca user aktif')
+      setPreview(null)
+      return
+    }
     const parsed = parseCsvToTrades(text, user.id)
     setPreview(parsed)
   }
@@ -50,11 +54,18 @@ export default function ImportPage() {
     if (!preview || preview.trades.length === 0) return
     setImporting(true)
     const supabase = createClient()
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      toast.error('Gagal membaca user aktif')
+      setImporting(false)
+      return
+    }
+
     let success = 0
     const errors: ImportError[] = [...preview.errors]
 
     for (let i = 0; i < preview.trades.length; i++) {
-      const { error } = await supabase.from('trades').insert(preview.trades[i])
+      const { error } = await supabase.from('trades').insert({ ...preview.trades[i], user_id: user.id })
       if (error) {
         errors.push({ row: i + 2, message: error.message })
       } else {
@@ -69,169 +80,166 @@ export default function ImportPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6">
+    <div className="p-6 space-y-5">
       <div>
-        <h1 className="text-white font-bold text-xl">Import CSV</h1>
-        <p className="text-gray-500 text-xs mt-1">Upload file CSV untuk import trade secara bulk</p>
+        <h1 className="text-white font-bold text-lg">Import CSV</h1>
+        <p className="text-gray-400 text-xs mt-0.5">Upload file CSV untuk import trade secara bulk</p>
       </div>
 
-      {/* Template download */}
-      <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 flex items-center justify-between gap-4">
-        <div>
-          <p className="text-blue-400 text-sm font-medium">Download Template CSV</p>
-          <p className="text-gray-400 text-xs mt-0.5">Gunakan template ini agar format sesuai dengan sistem TradeMind</p>
-        </div>
-        <button onClick={handleDownloadTemplate}
-          className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors whitespace-nowrap">
-          Download Template
-        </button>
-      </div>
-
-      {/* Upload area */}
-      {!result && (
-        <div
-          onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-          onClick={() => fileRef.current?.click()}
-          className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all ${
-            dragOver ? 'border-blue-500 bg-blue-500/10' : file ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-[#2a2a3a] hover:border-blue-500/50 hover:bg-[#1a1a2a]'
-          }`}>
-          {file ? (
-            <div className="flex flex-col items-center gap-2">
-              <FileIcon />
-              <p className="text-gray-200 text-sm font-medium">{file.name}</p>
-              <p className="text-gray-500 text-xs">{(file.size / 1024).toFixed(1)} KB</p>
-              <p className="text-blue-400 text-xs">Klik untuk ganti file</p>
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
+        <div className="space-y-4 min-w-0">
+          <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4 flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-blue-400 text-sm font-medium">Download Template CSV</p>
+              <p className="text-gray-400 text-xs mt-0.5">Gunakan template ini agar format sesuai dengan sistem TradeMind</p>
             </div>
-          ) : (
-            <div className="flex flex-col items-center gap-3">
-              <UploadIcon />
-              <p className="text-gray-300 text-sm font-medium">Drag & drop file CSV di sini</p>
-              <p className="text-gray-500 text-xs">atau klik untuk pilih file</p>
-            </div>
-          )}
-          <input ref={fileRef} type="file" accept=".csv" className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
-        </div>
-      )}
-
-      {/* Preview */}
-      {preview && !result && (
-        <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-[#2a2a3a] flex items-center justify-between">
-            <h3 className="text-gray-200 font-semibold text-sm">Preview Import</h3>
-            <div className="flex items-center gap-3">
-              <span className="text-emerald-400 text-xs font-medium">{preview.trades.length} valid</span>
-              {preview.errors.length > 0 && <span className="text-red-400 text-xs font-medium">{preview.errors.length} error</span>}
-            </div>
+            <button type="button" onClick={handleDownloadTemplate}
+              className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors whitespace-nowrap">
+              Download Template
+            </button>
           </div>
 
-          {/* Valid rows */}
-          {preview.trades.length > 0 && (
-            <div className="divide-y divide-[#1e1e2e] max-h-48 overflow-y-auto">
-              {preview.trades.slice(0, 10).map((t, i) => (
-                <div key={i} className="flex items-center gap-3 px-4 py-2.5">
-                  <CheckIcon />
-                  <span className="text-gray-200 text-xs font-medium w-24">{t.symbol}</span>
-                  <span className={`text-xs ${t.position_type === 'long' ? 'text-emerald-400' : 'text-red-400'}`}>{t.position_type?.toUpperCase()}</span>
-                  <span className="text-gray-500 text-xs">{t.entry_at?.slice(0, 10)}</span>
-                  <span className={`text-xs font-mono ml-auto ${(t.net_pnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {t.net_pnl !== undefined ? `${t.net_pnl >= 0 ? '+' : ''}$${t.net_pnl}` : '—'}
-                  </span>
+          {!result && (
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all ${
+                dragOver ? 'border-blue-500 bg-blue-500/10' : file ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-[#2a2a3a] hover:border-blue-500/50 hover:bg-[#1a1a2a]'
+              }`}>
+              {file ? (
+                <div className="flex flex-col items-center gap-2">
+                  <FileIcon />
+                  <p className="text-gray-200 text-sm font-medium">{file.name}</p>
+                  <p className="text-gray-500 text-xs">{(file.size / 1024).toFixed(1)} KB</p>
+                  <p className="text-blue-400 text-xs">Klik untuk ganti file</p>
                 </div>
-              ))}
-              {preview.trades.length > 10 && (
-                <div className="px-4 py-2 text-gray-500 text-xs">...dan {preview.trades.length - 10} trade lainnya</div>
+              ) : (
+                <div className="flex flex-col items-center gap-3">
+                  <UploadIcon />
+                  <p className="text-gray-300 text-sm font-medium">Drag & drop file CSV di sini</p>
+                  <p className="text-gray-500 text-xs">atau klik untuk pilih file</p>
+                </div>
               )}
+              <input ref={fileRef} type="file" accept=".csv" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
             </div>
           )}
 
-          {/* Errors */}
-          {preview.errors.length > 0 && (
-            <div className="border-t border-[#2a2a3a]">
-              <p className="text-red-400 text-xs font-medium px-4 py-2">Baris dengan error (tidak akan diimport):</p>
-              <div className="divide-y divide-[#1e1e2e] max-h-32 overflow-y-auto">
-                {preview.errors.map((err, i) => (
-                  <div key={i} className="flex items-start gap-3 px-4 py-2">
-                    <XIcon />
-                    <span className="text-gray-500 text-xs">Baris {err.row}:</span>
-                    <span className="text-red-300 text-xs">{err.message}</span>
+          {preview && !result && (
+            <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-[#2a2a3a] flex items-center justify-between gap-3 flex-wrap">
+                <h3 className="text-gray-200 font-semibold text-sm">Preview Import</h3>
+                <div className="flex items-center gap-3">
+                  <span className="text-emerald-400 text-xs font-medium">{preview.trades.length} valid</span>
+                  {preview.errors.length > 0 && <span className="text-red-400 text-xs font-medium">{preview.errors.length} error</span>}
+                </div>
+              </div>
+
+              {preview.trades.length > 0 && (
+                <div className="divide-y divide-[#1e1e2e] max-h-64 overflow-y-auto">
+                  {preview.trades.slice(0, 12).map((t, i) => (
+                    <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                      <CheckIcon />
+                      <span className="text-gray-200 text-xs font-medium w-24">{t.symbol}</span>
+                      <span className={`text-xs ${t.position_type === 'long' ? 'text-emerald-400' : 'text-red-400'}`}>{t.position_type === 'long' ? 'BUY/LONG' : 'SELL/SHORT'}</span>
+                      <span className="text-gray-500 text-xs">{t.entry_at?.slice(0, 10)}</span>
+                      <span className={`text-xs font-mono ml-auto ${(t.net_pnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {t.net_pnl !== undefined ? `${t.net_pnl >= 0 ? '+' : ''}$${t.net_pnl}` : '-'}
+                      </span>
+                    </div>
+                  ))}
+                  {preview.trades.length > 12 && (
+                    <div className="px-4 py-2 text-gray-500 text-xs">...dan {preview.trades.length - 12} trade lainnya</div>
+                  )}
+                </div>
+              )}
+
+              {preview.errors.length > 0 && (
+                <div className="border-t border-[#2a2a3a]">
+                  <p className="text-red-400 text-xs font-medium px-4 py-2">Baris dengan error (tidak akan diimport):</p>
+                  <div className="divide-y divide-[#1e1e2e] max-h-40 overflow-y-auto">
+                    {preview.errors.map((err, i) => (
+                      <div key={i} className="flex items-start gap-3 px-4 py-2">
+                        <XIcon />
+                        <span className="text-gray-500 text-xs">Baris {err.row}:</span>
+                        <span className="text-red-300 text-xs">{err.message}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+              )}
+
+              <div className="px-4 py-3 border-t border-[#2a2a3a] flex gap-3">
+                <button type="button" onClick={() => { setFile(null); setPreview(null) }}
+                  className="flex-1 bg-[#1e1e2e] hover:bg-[#2a2a3a] text-gray-300 py-2.5 rounded-lg text-sm font-medium transition-colors">
+                  Batal
+                </button>
+                <button type="button" onClick={handleImport} disabled={importing || preview.trades.length === 0}
+                  className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white py-2.5 rounded-lg text-sm font-bold transition-colors">
+                  {importing ? 'Mengimport...' : `Import ${preview.trades.length} Trade`}
+                </button>
               </div>
             </div>
           )}
 
-          <div className="px-4 py-3 border-t border-[#2a2a3a] flex gap-3">
-            <button onClick={() => { setFile(null); setPreview(null) }}
-              className="flex-1 bg-[#1e1e2e] hover:bg-[#2a2a3a] text-gray-300 py-2.5 rounded-xl text-sm font-medium transition-colors">
-              Batal
-            </button>
-            <button onClick={handleImport} disabled={importing || preview.trades.length === 0}
-              className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white py-2.5 rounded-xl text-sm font-bold transition-colors">
-              {importing ? 'Mengimport...' : `Import ${preview.trades.length} Trade`}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Result */}
-      {result && (
-        <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl p-5 space-y-4">
-          <h3 className="text-gray-200 font-semibold text-sm">Hasil Import</h3>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-[#1a1a2a] rounded-xl p-3 text-center">
-              <p className="text-2xl font-bold text-white">{result.total}</p>
-              <p className="text-gray-500 text-xs mt-1">Total Baris</p>
-            </div>
-            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
-              <p className="text-2xl font-bold text-emerald-400">{result.success}</p>
-              <p className="text-gray-500 text-xs mt-1">Berhasil</p>
-            </div>
-            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-center">
-              <p className="text-2xl font-bold text-red-400">{result.errors.length}</p>
-              <p className="text-gray-500 text-xs mt-1">Gagal</p>
-            </div>
-          </div>
-
-          {result.errors.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-red-400 text-xs font-medium">Detail Error:</p>
-              {result.errors.map((e, i) => (
-                <div key={i} className="flex gap-2 text-xs">
-                  <span className="text-gray-500">Baris {e.row}:</span>
-                  <span className="text-red-300">{e.message}</span>
+          {result && (
+            <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl p-4 space-y-4">
+              <h3 className="text-gray-200 font-semibold text-sm">Hasil Import</h3>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-[#1a1a2a] rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-white">{result.total}</p>
+                  <p className="text-gray-500 text-xs mt-1">Total Baris</p>
                 </div>
-              ))}
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-emerald-400">{result.success}</p>
+                  <p className="text-gray-500 text-xs mt-1">Berhasil</p>
+                </div>
+                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-red-400">{result.errors.length}</p>
+                  <p className="text-gray-500 text-xs mt-1">Gagal</p>
+                </div>
+              </div>
+
+              {result.errors.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-red-400 text-xs font-medium">Detail Error:</p>
+                  {result.errors.map((e, i) => (
+                    <div key={i} className="flex gap-2 text-xs">
+                      <span className="text-gray-500">Baris {e.row}:</span>
+                      <span className="text-red-300">{e.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button type="button" onClick={() => { setFile(null); setPreview(null); setResult(null) }}
+                  className="flex-1 bg-[#1e1e2e] hover:bg-[#2a2a3a] text-gray-300 py-2.5 rounded-lg text-sm font-medium transition-colors">
+                  Import Lagi
+                </button>
+                <button type="button" onClick={() => router.push('/trades')}
+                  className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-lg text-sm font-bold transition-colors">
+                  Lihat Trades
+                </button>
+              </div>
             </div>
           )}
+        </div>
 
-          <div className="flex gap-3">
-            <button onClick={() => { setFile(null); setPreview(null); setResult(null) }}
-              className="flex-1 bg-[#1e1e2e] hover:bg-[#2a2a3a] text-gray-300 py-2.5 rounded-xl text-sm font-medium transition-colors">
-              Import Lagi
-            </button>
-            <button onClick={() => router.push('/trades')}
-              className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl text-sm font-bold transition-colors">
-              Lihat Trades
-            </button>
+        <aside className="bg-[#14141e] border border-[#2a2a3a] rounded-xl p-4 space-y-3">
+          <h3 className="text-gray-300 text-sm font-semibold">Panduan Import</h3>
+          <div className="space-y-2 text-xs text-gray-400">
+            <p>1. Download template CSV di atas</p>
+            <p>2. Isi data trade sesuai format kolom yang ada</p>
+            <p>3. Field wajib: <span className="text-gray-200">symbol, entry_at, entry_price, position_type</span></p>
+            <p>4. Format tanggal: <span className="text-gray-200 font-mono">2025-06-07 09:00</span></p>
+            <p>5. position_type: <span className="text-gray-200">long</span> atau <span className="text-gray-200">short</span></p>
+            <p>6. result: <span className="text-gray-200">win</span>, <span className="text-gray-200">loss</span>, atau <span className="text-gray-200">breakeven</span></p>
+            <p>7. Upload file CSV dan review sebelum import</p>
           </div>
-        </div>
-      )}
-
-      {/* Instructions */}
-      <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl p-5 space-y-3">
-        <h3 className="text-gray-300 text-sm font-semibold">Panduan Import</h3>
-        <div className="space-y-2 text-xs text-gray-400">
-          <p>1. Download template CSV di atas</p>
-          <p>2. Isi data trade sesuai format kolom yang ada</p>
-          <p>3. Field wajib: <span className="text-gray-200">symbol, entry_at, entry_price, position_type</span></p>
-          <p>4. Format tanggal: <span className="text-gray-200 font-mono">2025-06-07 09:00</span></p>
-          <p>5. position_type: <span className="text-gray-200">long</span> atau <span className="text-gray-200">short</span></p>
-          <p>6. result: <span className="text-gray-200">win</span>, <span className="text-gray-200">loss</span>, atau <span className="text-gray-200">breakeven</span></p>
-          <p>7. Upload file CSV dan review sebelum import</p>
-        </div>
+        </aside>
       </div>
     </div>
   )

@@ -14,10 +14,20 @@ export default function EditTradePage() {
   useEffect(() => {
     async function load() {
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError || !user) {
+        setLoading(false)
+        return
+      }
+
       setUserId(user.id)
-      const { data } = await supabase.from('trades').select('*').eq('id', id).single()
+      const { data } = await supabase
+        .from('trades')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
       setTrade(data)
       setLoading(false)
     }
@@ -30,7 +40,7 @@ export default function EditTradePage() {
   return (
     <div>
       <div className="px-6 py-4 border-b border-[#1e1e2e] bg-[#0e0e18]">
-        <h1 className="text-white font-bold">Edit Trade — {trade.symbol}</h1>
+        <h1 className="text-white font-bold">Edit Trade - {trade.symbol}</h1>
       </div>
       <TradeForm trade={trade} userId={userId} mode="edit" />
     </div>

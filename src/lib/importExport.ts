@@ -4,8 +4,11 @@
 import type { Trade } from '@/types/trade';
 
 const TRADE_ACCOUNT_VALUES = ['spot', 'futures', 'margin'];
+const POSITION_VALUES = ['long', 'short'];
+const RESULT_VALUES = ['win', 'loss', 'breakeven'];
+const MARKET_VALUES = ['crypto', 'forex', 'saham', 'futures', 'other'];
+const MODE_VALUES = ['manual', 'bot', 'copytrade', 'signal'];
 
-// ─── CSV TEMPLATE HEADERS ─────────────────────────────────────
 export const CSV_HEADERS = [
   'symbol', 'market_type', 'trade_account_type', 'exchange', 'position_type', 'mode',
   'strategy_name', 'setup_type', 'timeframe',
@@ -36,80 +39,81 @@ export const CSV_TEMPLATE_ROW = [
   '', '',
 ];
 
-/**
- * Generate a blank CSV template string for download
- */
 export function generateCsvTemplate(): string {
-  const header = CSV_HEADERS.join(',');
-  const example = CSV_TEMPLATE_ROW.map(v => `"${v}"`).join(',');
+  const header = CSV_HEADERS.map(escapeCsvField).join(',');
+  const example = CSV_TEMPLATE_ROW.map(escapeCsvField).join(',');
   return `${header}\n${example}`;
 }
 
-/**
- * Parse CSV rows into Trade objects
- * Returns { trades, errors }
- */
 export function parseCsvToTrades(
   csvText: string,
   userId: string
 ): { trades: Partial<Trade>[]; errors: Array<{ row: number; message: string }> } {
-  const lines = csvText.trim().split('\n');
-  if (lines.length < 2) {
+  const rows = parseCsvRows(csvText);
+  if (rows.length < 2) {
     return { trades: [], errors: [{ row: 0, message: 'CSV file is empty or has no data rows' }] };
   }
 
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+  const headers = rows[0].map(h => h.trim().toLowerCase().replace(/"/g, ''));
   const trades: Partial<Trade>[] = [];
   const errors: Array<{ row: number; message: string }> = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const rawLine = lines[i].trim();
-    if (!rawLine) continue;
+  for (let i = 1; i < rows.length; i++) {
+    const values = rows[i];
+    if (values.every(value => !value.trim())) continue;
 
     try {
-      const values = parseCsvLine(rawLine);
       const row: Record<string, string> = {};
       headers.forEach((h, idx) => { row[h] = values[idx]?.trim() ?? ''; });
 
-      // Required fields
-      if (!row.symbol) { errors.push({ row: i + 1, message: 'Missing required field: symbol' }); continue; }
-      if (!row.entry_at) { errors.push({ row: i + 1, message: 'Missing required field: entry_at' }); continue; }
-      if (!row.entry_price || isNaN(+row.entry_price)) { errors.push({ row: i + 1, message: 'Invalid entry_price' }); continue; }
-      if (!row.position_type || !['long','short'].includes(row.position_type)) {
-        errors.push({ row: i + 1, message: 'position_type must be "long" or "short"' }); continue;
-      }
-
+      const symbol = row.symbol.toUpperCase();
+      const entryAt = parseDate(row.entry_at);
+      const exitAt = row.exit_at ? parseDate(row.exit_at) : undefined;
+      const entryPrice = parseRequiredNumber(row.entry_price, 'entry_price');
+      const positionType = row.position_type.toLowerCase();
+      const result = row.result.toLowerCase();
+      const marketType = MARKET_VALUES.includes(row.market_type) ? row.market_type : 'crypto';
+      const mode = MODE_VALUES.includes(row.mode) ? row.mode : 'manual';
       const tradeAccountType = TRADE_ACCOUNT_VALUES.includes(row.trade_account_type)
         ? row.trade_account_type
         : 'spot';
 
+      if (!symbol) { errors.push({ row: i + 1, message: 'Missing required field: symbol' }); continue; }
+      if (!row.entry_at) { errors.push({ row: i + 1, message: 'Missing required field: entry_at' }); continue; }
+      if (!POSITION_VALUES.includes(positionType)) {
+        errors.push({ row: i + 1, message: 'position_type must be "long" or "short"' }); continue;
+      }
+      if (result && !RESULT_VALUES.includes(result)) {
+        errors.push({ row: i + 1, message: 'result must be "win", "loss", or "breakeven"' }); continue;
+      }
+
       const trade: Partial<Trade> = {
         user_id: userId,
-        symbol: row.symbol.toUpperCase(),
-        market_type: (row.market_type as Trade['market_type']) || 'crypto',
+        symbol,
+        market_type: marketType as Trade['market_type'],
         trade_account_type: tradeAccountType as Trade['trade_account_type'],
         exchange: row.exchange || undefined,
-        position_type: row.position_type as Trade['position_type'],
-        mode: (row.mode as Trade['mode']) || 'manual',
+        position_type: positionType as Trade['position_type'],
+        mode: mode as Trade['mode'],
         strategy_name: row.strategy_name || undefined,
         setup_type: (row.setup_type as Trade['setup_type']) || undefined,
         timeframe: (row.timeframe as Trade['timeframe']) || undefined,
-        entry_at: new Date(row.entry_at).toISOString(),
-        exit_at: row.exit_at ? new Date(row.exit_at).toISOString() : undefined,
-        entry_price: +row.entry_price,
-        exit_price: row.exit_price ? +row.exit_price : undefined,
-        position_size: row.position_size ? +row.position_size : undefined,
-        leverage: row.leverage ? +row.leverage : tradeAccountType === 'spot' ? 1 : undefined,
-        stop_loss: row.stop_loss ? +row.stop_loss : undefined,
-        take_profit: row.take_profit ? +row.take_profit : undefined,
-        risk_amount: row.risk_amount ? +row.risk_amount : undefined,
-        risk_percent: row.risk_percent ? +row.risk_percent : undefined,
-        fee: row.fee ? +row.fee : 0,
-        funding_fee: tradeAccountType === 'spot' ? 0 : row.funding_fee ? +row.funding_fee : 0,
-        gross_pnl: row.gross_pnl ? +row.gross_pnl : undefined,
-        net_pnl: row.net_pnl ? +row.net_pnl : undefined,
-        result: (row.result as Trade['result']) || undefined,
-        r_multiple: row.r_multiple ? +row.r_multiple : undefined,
+        entry_at: entryAt,
+        exit_at: exitAt,
+        entry_price: entryPrice,
+        exit_price: parseOptionalNumber(row.exit_price),
+        position_size: parseOptionalNumber(row.position_size),
+        leverage: parseOptionalNumber(row.leverage) ?? (tradeAccountType === 'spot' ? 1 : undefined),
+        stop_loss: parseOptionalNumber(row.stop_loss),
+        take_profit: parseOptionalNumber(row.take_profit),
+        risk_amount: parseOptionalNumber(row.risk_amount),
+        risk_percent: parseOptionalNumber(row.risk_percent),
+        fee: parseOptionalNumber(row.fee) ?? 0,
+        funding_fee: tradeAccountType === 'spot' ? 0 : parseOptionalNumber(row.funding_fee) ?? 0,
+        gross_pnl: parseOptionalNumber(row.gross_pnl),
+        net_pnl: parseOptionalNumber(row.net_pnl),
+        result: result ? result as Trade['result'] : undefined,
+        r_multiple: parseOptionalNumber(row.r_multiple),
         market_condition: (row.market_condition as Trade['market_condition']) || undefined,
         entry_reason: row.entry_reason || undefined,
         exit_reason: row.exit_reason || undefined,
@@ -129,34 +133,63 @@ export function parseCsvToTrades(
   return { trades, errors };
 }
 
-/**
- * Parse a single CSV line handling quoted fields
- */
-function parseCsvLine(line: string): string[] {
-  const result: string[] = [];
+function parseCsvRows(input: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
   let current = '';
   let inQuotes = false;
 
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
+  const text = input.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+
     if (char === '"') {
-      inQuotes = !inQuotes;
+      if (inQuotes && next === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
     } else if (char === ',' && !inQuotes) {
-      result.push(current);
+      row.push(current);
+      current = '';
+    } else if (char === '\n' && !inQuotes) {
+      row.push(current);
+      rows.push(row);
+      row = [];
       current = '';
     } else {
       current += char;
     }
   }
-  result.push(current);
-  return result;
+
+  row.push(current);
+  if (row.some(value => value.trim())) rows.push(row);
+  return rows;
 }
 
-/**
- * Export trades array to CSV string
- */
+function parseDate(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) throw new Error(`Invalid date: ${value}`);
+  return parsed.toISOString();
+}
+
+function parseRequiredNumber(value: string, label: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) throw new Error(`Invalid ${label}`);
+  return parsed;
+}
+
+function parseOptionalNumber(value: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 export function tradesToCsv(trades: Trade[]): string {
-  const header = CSV_HEADERS.join(',');
+  const header = CSV_HEADERS.map(escapeCsvField).join(',');
   const rows = trades.map(t => {
     const values = [
       t.symbol, t.market_type, t.trade_account_type ?? 'spot', t.exchange ?? '', t.position_type, t.mode,
@@ -169,28 +202,25 @@ export function tradesToCsv(trades: Trade[]): string {
       t.fee ?? 0, t.funding_fee ?? 0,
       t.gross_pnl ?? '', t.net_pnl ?? '', t.result ?? '', t.r_multiple ?? '',
       t.market_condition ?? '',
-      escapeCsvField(t.entry_reason ?? ''),
-      escapeCsvField(t.exit_reason ?? ''),
-      escapeCsvField(t.mistake_notes ?? ''),
-      escapeCsvField(t.lesson_learned ?? ''),
+      t.entry_reason ?? '',
+      t.exit_reason ?? '',
+      t.mistake_notes ?? '',
+      t.lesson_learned ?? '',
       (t.tags ?? []).join(';'),
       t.bot_name ?? '', t.bot_version ?? '',
     ];
-    return values.map(v => typeof v === 'string' && v.includes(',') ? `"${v}"` : v).join(',');
+    return values.map(value => escapeCsvField(String(value))).join(',');
   });
   return [header, ...rows].join('\n');
 }
 
 function escapeCsvField(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+  if (/[",\n\r]/.test(value)) {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
 }
 
-/**
- * Trigger browser download of text content as a file
- */
 export function downloadFile(content: string, filename: string, mimeType = 'text/csv'): void {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
