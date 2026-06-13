@@ -1,13 +1,15 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import type { BotConfig } from '@/types/trade'
 import { Icons } from '@/components/ui/Icons'
 
-const inp = 'w-full bg-[#1a1a2a] border border-[#2a2a3a] text-gray-200 text-sm px-3 py-2.5 rounded-xl focus:outline-none focus:border-blue-500 transition-colors'
+const inp = 'w-full bg-[#1a1a2a] border border-[#2a2a3a] text-gray-200 text-sm px-3 py-2.5 rounded-xl focus:outline-none focus:border-blue-500 transition-colors disabled:cursor-not-allowed disabled:opacity-60'
 const lbl = 'block text-gray-400 text-xs font-medium mb-1.5'
+
+const EMPTY_FORM = { name:'', version:'', mode:'live', exchange:'', strategy:'', notes:'' }
 
 type BotWithStats = BotConfig & { trade_count: number; net_pnl: number }
 type BotTradeStat = { id?: string; net_pnl: number | null }
@@ -17,7 +19,9 @@ export default function BotPage() {
   const [showForm, setShowForm] = useState(false)
   const [loading,  setLoading]  = useState(true)
   const [saving,   setSaving]   = useState(false)
-  const [form, setForm] = useState({ name:'', version:'', mode:'live', exchange:'', strategy:'', notes:'' })
+  const [form, setForm] = useState(EMPTY_FORM)
+  const saveLockRef = useRef(false)
+
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
 
   async function load() {
@@ -72,23 +76,69 @@ export default function BotPage() {
   useEffect(() => { load() }, [])
 
   async function handleSave() {
-    if (!form.name.trim()) { toast.error('Nama bot wajib diisi'); return }
-    setSaving(true)
-    const supabase = createClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
-      toast.error('Gagal membaca user aktif')
-      setSaving(false)
-      return
-    }
+    if (saveLockRef.current) return
 
-    const { error } = await supabase.from('bot_configs').insert({ user_id: user.id, ...form, name: form.name.trim() })
-    setSaving(false)
-    if (error) { toast.error('Gagal menyimpan bot'); return }
-    toast.success('Bot berhasil ditambahkan!')
+    const name = form.name.trim()
+    const version = form.version.trim()
+    if (!name) { toast.error('Nama bot wajib diisi'); return }
+
+    saveLockRef.current = true
+    setSaving(true)
+
+    try {
+      const supabase = createClient()
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError || !user) {
+        toast.error('Gagal membaca user aktif')
+        return
+      }
+
+      const { data: existing, error: duplicateCheckError } = await supabase
+        .from('bot_configs')
+        .select('id')
+        .eq('user_id', user.id)
+        .ilike('name', name)
+        .eq('version', version)
+        .limit(1)
+
+      if (duplicateCheckError) {
+        toast.error('Gagal memeriksa data bot')
+        return
+      }
+
+      if (existing?.length) {
+        toast.error(`Bot ${name}${version ? ` ${version}` : ''} sudah terdaftar`)
+        return
+      }
+
+      const { error } = await supabase.from('bot_configs').insert({
+        user_id: user.id,
+        ...form,
+        name,
+        version,
+        exchange: form.exchange.trim(),
+        strategy: form.strategy.trim(),
+        notes: form.notes.trim(),
+      })
+
+      if (error) {
+        toast.error('Gagal menyimpan bot')
+        return
+      }
+
+      toast.success('Bot berhasil ditambahkan!')
+      setShowForm(false)
+      setForm(EMPTY_FORM)
+      await load()
+    } finally {
+      saveLockRef.current = false
+      setSaving(false)
+    }
+  }
+
+  function closeForm() {
+    if (saveLockRef.current) return
     setShowForm(false)
-    setForm({ name:'', version:'', mode:'live', exchange:'', strategy:'', notes:'' })
-    load()
   }
 
   if (loading) return <div className="flex items-center justify-center h-full"><p className="text-gray-400 text-sm animate-pulse">Memuat bot...</p></div>
@@ -100,8 +150,8 @@ export default function BotPage() {
           <h1 className="text-white font-bold text-lg">Bot Journal</h1>
           <p className="text-gray-400 text-xs mt-0.5">Lacak & bandingkan performa bot trading kamu</p>
         </div>
-        <button onClick={() => setShowForm(true)}
-          className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors">
+        <button onClick={() => setShowForm(true)} disabled={saving}
+          className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60">
           <Icons.Plus /> Tambah Bot
         </button>
       </div>
@@ -111,28 +161,28 @@ export default function BotPage() {
           <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a2a3a]">
               <h2 className="text-white font-bold">Tambah Bot</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-[#2a2a3a] transition-colors">
+              <button onClick={closeForm} disabled={saving} className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-[#2a2a3a] transition-colors disabled:cursor-not-allowed disabled:opacity-40">
                 <Icons.Close />
               </button>
             </div>
             <div className="p-6 space-y-4">
-              <div><label className={lbl}>Nama Bot *</label><input className={inp} value={form.name} onChange={e => set('name', e.target.value)} placeholder="OMAD SNIPER" /></div>
+              <div><label className={lbl}>Nama Bot *</label><input disabled={saving} className={inp} value={form.name} onChange={e => set('name', e.target.value)} placeholder="OMAD SNIPER" /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className={lbl}>Versi</label><input className={inp} value={form.version} onChange={e => set('version', e.target.value)} placeholder="v11" /></div>
+                <div><label className={lbl}>Versi</label><input disabled={saving} className={inp} value={form.version} onChange={e => set('version', e.target.value)} placeholder="v11" /></div>
                 <div>
                   <label className={lbl}>Mode</label>
-                  <select className={inp + ' cursor-pointer'} value={form.mode} onChange={e => set('mode', e.target.value)}>
+                  <select disabled={saving} className={inp + ' cursor-pointer'} value={form.mode} onChange={e => set('mode', e.target.value)}>
                     <option value="live">Live</option><option value="paper">Paper</option>
                   </select>
                 </div>
               </div>
-              <div><label className={lbl}>Exchange</label><input className={inp} value={form.exchange} onChange={e => set('exchange', e.target.value)} placeholder="Binance" /></div>
-              <div><label className={lbl}>Strategy</label><input className={inp} value={form.strategy} onChange={e => set('strategy', e.target.value)} placeholder="TMV Intelligence" /></div>
-              <div><label className={lbl}>Catatan</label><textarea className={inp + ' resize-none'} rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} /></div>
+              <div><label className={lbl}>Exchange</label><input disabled={saving} className={inp} value={form.exchange} onChange={e => set('exchange', e.target.value)} placeholder="Binance" /></div>
+              <div><label className={lbl}>Strategy</label><input disabled={saving} className={inp} value={form.strategy} onChange={e => set('strategy', e.target.value)} placeholder="TMV Intelligence" /></div>
+              <div><label className={lbl}>Catatan</label><textarea disabled={saving} className={inp + ' resize-none'} rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} /></div>
               <div className="flex gap-3">
-                <button onClick={() => setShowForm(false)} className="flex-1 bg-[#1e1e2e] hover:bg-[#2a2a3a] text-gray-300 py-2.5 rounded-xl text-sm font-medium transition-colors">Batal</button>
+                <button onClick={closeForm} disabled={saving} className="flex-1 bg-[#1e1e2e] hover:bg-[#2a2a3a] text-gray-300 py-2.5 rounded-xl text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50">Batal</button>
                 <button onClick={handleSave} disabled={saving}
-                  className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white py-2.5 rounded-xl text-sm font-bold transition-colors">
+                  className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60 text-white py-2.5 rounded-xl text-sm font-bold transition-colors">
                   {saving ? 'Menyimpan...' : 'Simpan'}
                 </button>
               </div>
@@ -145,8 +195,8 @@ export default function BotPage() {
         <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl flex flex-col items-center py-16 gap-3">
           <Icons.EmptyBot />
           <p className="text-gray-400 text-sm">Belum ada bot terdaftar</p>
-          <button onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors">
+          <button onClick={() => setShowForm(true)} disabled={saving}
+            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60">
             <Icons.Plus /> Tambah Bot Pertama
           </button>
         </div>
