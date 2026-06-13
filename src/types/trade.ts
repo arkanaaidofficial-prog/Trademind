@@ -164,6 +164,7 @@ export interface TradingRules {
 export interface ChecklistItem {
   id: string;
   text: string;
+  note?: string;
   required: boolean;
 }
 
