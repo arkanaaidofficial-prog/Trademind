@@ -87,6 +87,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   const initials = user?.full_name?.charAt(0)?.toUpperCase() ?? 'T'
+  const settingsActive = pathname === '/settings' || pathname.startsWith('/settings/')
 
   return (
     <div className="flex h-screen bg-[#0a0a14] overflow-hidden">
@@ -123,7 +124,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {NAV.map(item => {
             const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
             return (
-              <Link key={item.href} href={item.href} onClick={() => setMobileOpen(false)}
+              <Link key={item.href} href={item.href} onClick={() => setMobileOpen(false)} aria-current={active ? 'page' : undefined}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
                   active
                     ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30 font-medium'
@@ -137,7 +138,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
 
         <div className="p-3 border-t border-[#1e1e2e] space-y-1">
-          <Link href="/settings" className="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-400 hover:bg-[#1a1a2a] hover:text-gray-200 text-sm transition-all">
+          <Link href="/settings" onClick={() => setMobileOpen(false)} aria-current={settingsActive ? 'page' : undefined}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
+              settingsActive
+                ? 'bg-blue-600/20 text-blue-400 border border-blue-600/30 font-medium'
+                : 'text-gray-400 hover:bg-[#1a1a2a] hover:text-gray-200'
+            }`}>
             <SettingsIcon /> Settings
           </Link>
           <button
@@ -163,14 +169,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <div className="lg:hidden h-12 border-b border-[#1e1e2e] bg-[#0e0e18] flex items-center justify-between px-4 flex-shrink-0">
-          <button onClick={() => setMobileOpen(true)} className="text-gray-400 hover:text-white">
+          <button onClick={() => setMobileOpen(true)} aria-label="Buka menu navigasi" className="text-gray-400 hover:text-white">
             <MenuIcon />
           </button>
           <span className="text-white font-bold text-sm">TradeMind</span>
           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold">{initials}</div>
         </div>
         <main className="flex-1 overflow-auto">
-          {children}
+          <div className="dashboard-content">
+            {children}
+          </div>
         </main>
       </div>
     </div>
