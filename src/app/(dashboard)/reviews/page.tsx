@@ -289,7 +289,6 @@ export default function ReviewsPage() {
             <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
           </svg>
           <p className="text-gray-400 text-sm">Belum ada review</p>
-          <button onClick={() => setShowForm(true)} disabled={saving} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60">Buat Review Pertama</button>
         </div>
       ) : (
         <div className="space-y-3">
