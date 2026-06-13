@@ -157,7 +157,7 @@ export default function BotPage() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
           <div className="bg-[#14141e] border border-[#2a2a3a] rounded-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a2a3a]">
               <h2 className="text-white font-bold">Tambah Bot</h2>
