@@ -166,9 +166,6 @@ export default function TradesPage() {
         <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl flex flex-col items-center justify-center py-16 gap-3">
           <Icons.EmptyTrades />
           <p className="text-gray-400 text-sm">Belum ada trade yang cocok</p>
-          <Link href="/trades/new" className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors">
-            <Icons.Plus /> Add Trade
-          </Link>
         </div>
       ) : (
         <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl overflow-hidden">
