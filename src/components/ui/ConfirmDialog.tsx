@@ -37,7 +37,7 @@ export function ConfirmDialog({
   return (
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm" />
+        <Dialog.Overlay className="fixed inset-0 z-[80] bg-black/70" />
         <Dialog.Content
           onEscapeKeyDown={event => { if (loading) event.preventDefault() }}
           onPointerDownOutside={event => { if (loading) event.preventDefault() }}
