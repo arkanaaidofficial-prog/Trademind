@@ -2,12 +2,11 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import type { ChecklistItem } from '@/types/trade'
 
 const inp = 'w-full rounded-lg border border-[#2a2a3a] bg-[#0f0f19] px-3 py-2 text-sm text-gray-200 outline-none transition-colors placeholder:text-gray-600 focus:border-blue-500'
 const lbl = 'block text-gray-400 text-xs font-medium mb-1.5'
 const card = 'rounded-xl border border-[#2a2a3a] bg-[#14141e] p-4 space-y-4'
-
-type ChecklistItem = { id: string; text: string; required: boolean }
 
 type Rules = {
   id?: string
@@ -27,6 +26,7 @@ export default function RulesPage() {
   const [saving, setSaving] = useState(false)
   const [pairsInput, setPairsInput] = useState('')
   const [newChecklist, setNewChecklist] = useState('')
+  const [newChecklistNote, setNewChecklistNote] = useState('')
 
   useEffect(() => {
     const supabase = createClient()
@@ -44,10 +44,18 @@ export default function RulesPage() {
   function set(k: string, v: unknown) { setRules(r => ({ ...r, [k]: v })) }
 
   function addChecklist() {
-    if (!newChecklist.trim()) return
-    const item: ChecklistItem = { id: Date.now().toString(), text: newChecklist.trim(), required: true }
+    const text = newChecklist.trim()
+    if (!text) return
+
+    const item: ChecklistItem = {
+      id: Date.now().toString(),
+      text,
+      note: newChecklistNote.trim() || undefined,
+      required: true,
+    }
     set('entry_checklist', [...(rules.entry_checklist ?? []), item])
     setNewChecklist('')
+    setNewChecklistNote('')
   }
 
   function removeChecklist(id: string) {
@@ -58,6 +66,10 @@ export default function RulesPage() {
     set('entry_checklist', (rules.entry_checklist ?? []).map(c => c.id === id ? { ...c, required: !c.required } : c))
   }
 
+  function updateChecklistNote(id: string, note: string) {
+    set('entry_checklist', (rules.entry_checklist ?? []).map(c => c.id === id ? { ...c, note } : c))
+  }
+
   async function handleSave() {
     setSaving(true)
     const supabase = createClient()
@@ -65,6 +77,11 @@ export default function RulesPage() {
     if (!user) { setSaving(false); return }
 
     const pairs = pairsInput.split(',').map(p => p.trim().toUpperCase()).filter(Boolean)
+    const checklist = (rules.entry_checklist ?? []).map(item => ({
+      ...item,
+      text: item.text.trim(),
+      note: item.note?.trim() || undefined,
+    }))
     const payload = {
       user_id: user.id,
       max_risk_per_trade_pct: rules.max_risk_per_trade_pct ?? null,
@@ -74,7 +91,7 @@ export default function RulesPage() {
       allowed_hours_start: rules.allowed_hours_start ?? null,
       allowed_hours_end: rules.allowed_hours_end ?? null,
       allowed_pairs: pairs,
-      entry_checklist: rules.entry_checklist ?? [],
+      entry_checklist: checklist,
       updated_at: new Date().toISOString(),
     }
 
@@ -84,6 +101,7 @@ export default function RulesPage() {
 
     setSaving(false)
     if (error) { toast.error('Gagal menyimpan: ' + error.message); return }
+    set('entry_checklist', checklist)
     toast.success('Trading rules berhasil disimpan!')
   }
 
@@ -180,41 +198,69 @@ export default function RulesPage() {
 
         <aside className="space-y-4 min-w-0">
           <section className={card}>
-            <h2 className="text-gray-200 font-semibold text-sm border-b border-[#2a2a3a] pb-3">Checklist Sebelum Entry</h2>
+            <div className="border-b border-[#2a2a3a] pb-3">
+              <h2 className="text-gray-200 font-semibold text-sm">Checklist Sebelum Entry</h2>
+              <p className="text-gray-500 text-xs mt-1">Tambahkan catatan untuk menjelaskan kapan kondisi dianggap terpenuhi.</p>
+            </div>
 
             {(rules.entry_checklist ?? []).length === 0 ? (
               <p className="text-gray-500 text-xs">Belum ada checklist. Tambah kondisi wajib sebelum kamu entry.</p>
             ) : (
               <div className="space-y-2">
                 {(rules.entry_checklist ?? []).map(item => (
-                  <div key={item.id} className="flex items-center gap-3 rounded-lg border border-[#2a2a3a] bg-[#1a1a2a] px-3 py-2.5">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4 text-gray-600 flex-shrink-0">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                    <span className="text-gray-300 text-xs flex-1 min-w-0">{item.text}</span>
-                    <button type="button" onClick={() => toggleRequired(item.id)}
-                      className={`text-xs px-2 py-0.5 rounded-lg border transition-colors ${
-                        item.required ? 'border-red-500/30 bg-red-500/10 text-red-400' : 'border-[#2a2a3a] text-gray-500'
-                      }`}>
-                      {item.required ? 'Wajib' : 'Opsional'}
-                    </button>
-                    <button type="button" onClick={() => removeChecklist(item.id)} className="text-gray-600 hover:text-red-400 transition-colors">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  <div key={item.id} className="rounded-lg border border-[#2a2a3a] bg-[#1a1a2a] px-3 py-3">
+                    <div className="flex items-start gap-3">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="mt-0.5 w-4 h-4 text-gray-600 flex-shrink-0">
+                        <polyline points="20 6 9 17 4 12"/>
                       </svg>
-                    </button>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-gray-300 text-xs font-medium">{item.text}</p>
+                        <textarea
+                          rows={2}
+                          value={item.note ?? ''}
+                          onChange={e => updateChecklistNote(item.id, e.target.value)}
+                          placeholder="Catatan opsional, contoh: H1 dan H4 harus searah..."
+                          className="mt-2 w-full resize-none rounded-lg border border-[#2a2a3a] bg-[#0f0f19] px-2.5 py-2 text-xs text-gray-300 outline-none placeholder:text-gray-600 focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <button type="button" onClick={() => toggleRequired(item.id)}
+                          className={`text-xs px-2 py-0.5 rounded-lg border transition-colors ${
+                            item.required ? 'border-red-500/30 bg-red-500/10 text-red-400' : 'border-[#2a2a3a] text-gray-500'
+                          }`}>
+                          {item.required ? 'Wajib' : 'Opsional'}
+                        </button>
+                        <button type="button" onClick={() => removeChecklist(item.id)} className="text-gray-600 hover:text-red-400 transition-colors" aria-label={`Hapus ${item.text}`}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
 
-            <div className="flex gap-2">
-              <input className={inp} value={newChecklist} onChange={e => setNewChecklist(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && addChecklist()}
-                placeholder="Contoh: Trend HTF konfirmasi arah..." />
-              <button type="button" onClick={addChecklist}
-                className="whitespace-nowrap rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-500">
-                + Tambah
+            <div className="space-y-2 rounded-lg border border-[#2a2a3a] bg-[#10101a] p-3">
+              <div>
+                <label className={lbl}>Nama kondisi</label>
+                <input className={inp} value={newChecklist} onChange={e => setNewChecklist(e.target.value)}
+                  placeholder="Contoh: Trend HTF konfirmasi arah" />
+              </div>
+              <div>
+                <label className={lbl}>Catatan kondisi <span className="text-gray-600">(opsional)</span></label>
+                <textarea
+                  rows={2}
+                  className={inp + ' resize-none'}
+                  value={newChecklistNote}
+                  onChange={e => setNewChecklistNote(e.target.value)}
+                  placeholder="Contoh: Minimal H1 dan H4 sama-sama bullish"
+                />
+              </div>
+              <button type="button" onClick={addChecklist} disabled={!newChecklist.trim()}
+                className="w-full rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
+                + Tambah Checklist
               </button>
             </div>
           </section>
