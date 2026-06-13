@@ -12,6 +12,7 @@ import {
 import { formatTradeAccountType } from '@/types/trade-account'
 import { toast } from 'sonner'
 import type { Trade, TradePsychology } from '@/types/trade'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 
 type ScreenshotItem = StoredScreenshot & { url: string; name: string }
 
@@ -60,6 +61,8 @@ export default function TradeDetailPage() {
   const [screenshots, setScreenshots] = useState<ScreenshotItem[]>([])
   const [loading, setLoading] = useState(true)
   const [lightbox, setLightbox] = useState<string | null>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -113,11 +116,12 @@ export default function TradeDetailPage() {
   }, [id])
 
   async function handleDelete() {
-    if (!confirm('Hapus trade ini? Tidak bisa dikembalikan.')) return
+    setDeleting(true)
     const supabase = createClient()
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
       toast.error('Gagal membaca user aktif')
+      setDeleting(false)
       return
     }
 
@@ -129,6 +133,7 @@ export default function TradeDetailPage() {
       const { error: storageError } = await supabase.storage.from(TRADE_SCREENSHOTS_BUCKET).remove(storagePaths)
       if (storageError) {
         toast.error('Gagal menghapus screenshot')
+        setDeleting(false)
         return
       }
     }
@@ -136,9 +141,11 @@ export default function TradeDetailPage() {
     const { error } = await supabase.from('trades').delete().eq('id', id).eq('user_id', user.id)
     if (error) {
       toast.error('Gagal menghapus trade')
+      setDeleting(false)
       return
     }
 
+    setDeleteOpen(false)
     toast.success('Trade dihapus')
     router.push('/trades')
   }
@@ -156,6 +163,16 @@ export default function TradeDetailPage() {
 
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-4 pb-10">
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        onConfirm={handleDelete}
+        loading={deleting}
+        title="Hapus trade?"
+        description={<>Trade <strong className="text-gray-200">{trade.symbol}</strong> beserta screenshot yang tersimpan akan dihapus permanen dan tidak dapat dikembalikan.</>}
+        confirmLabel="Hapus Trade"
+      />
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -349,7 +366,7 @@ export default function TradeDetailPage() {
         <Link href={`/trades/${id}/edit`} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl text-sm font-bold transition-colors text-center">
           Edit Trade
         </Link>
-        <button onClick={handleDelete} className="px-5 bg-red-600/20 hover:bg-red-600/30 border border-red-600/30 text-red-400 py-3 rounded-xl text-sm font-medium transition-colors">
+        <button onClick={() => setDeleteOpen(true)} disabled={deleting} className="px-5 bg-red-600/20 hover:bg-red-600/30 border border-red-600/30 text-red-400 py-3 rounded-xl text-sm font-medium transition-colors disabled:opacity-50">
           Hapus
         </button>
       </div>
