@@ -60,6 +60,7 @@
   }
 
   .dashboard-content > .flex.flex-col.items-center.justify-center.h-full {
+    height: auto;
     min-height: min(70vh, 36rem);
     margin: 1rem;
     border: 1px solid #2a2a3a;
