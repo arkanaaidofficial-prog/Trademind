@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import TradeForm from '@/components/trades/TradeForm'
 import type { MarketType, Trade, TradeMode } from '@/types/trade'
@@ -52,6 +53,7 @@ function readPrefillFromLocation(): PrefillState | undefined {
 }
 
 export default function NewTradePage() {
+  const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
   const [prefill, setPrefill] = useState<PrefillState | undefined>()
   const [prefillReady, setPrefillReady] = useState(false)
@@ -74,10 +76,21 @@ export default function NewTradePage() {
   }, [])
 
   useEffect(() => {
-    createClient().auth.getUser().then(({ data }) => {
-      if (data.user) setUserId(data.user.id)
+    let active = true
+
+    createClient().auth.getUser().then(({ data, error }) => {
+      if (!active) return
+      if (error || !data.user) {
+        router.replace('/login')
+        return
+      }
+      setUserId(data.user.id)
     })
-  }, [])
+
+    return () => {
+      active = false
+    }
+  }, [router])
 
   if (!userId || !prefillReady) return <div className="flex items-center justify-center h-full"><p className="text-gray-400 text-sm animate-pulse">Memuat...</p></div>
 
