@@ -1,0 +1,22 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    - cron: "0 3 * * 1,4" # Senin & Kamis
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase API
+        env:
+          SUPABASE_URL: https://twtvijsjnosuhpiiplcw.supabase.co
+          SUPABASE_KEY: sb_publishable_Iu-c895pwEhdvP-CfOSUjw_iU-JPOWa
+        run: |
+          auth=$(curl -s -o /dev/null -w "%{http_code}" \
+            "$SUPABASE_URL/auth/v1/health" -H "apikey: $SUPABASE_KEY")
+          rest=$(curl -s -o /dev/null -w "%{http_code}" \
+            "$SUPABASE_URL/rest/v1/" -H "apikey: $SUPABASE_KEY")
+          echo "auth=$auth rest=$rest"
+          [ "$auth" -eq 200 ] || exit 1
