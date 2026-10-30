@@ -374,45 +374,13 @@ export function calcPerformanceByDimension(
 
 /**
  * Calculate R-Multiple: actual P/L / risk amount
+ *
+ * CATATAN: pemeriksaan aturan dagang DIPINDAH ke src/lib/rules.ts.
+ * checkRuleViolations() yang dulu ada di sini tidak punya satu pun
+ * pemanggil, dan menerima max_daily_loss sebagai parameter lalu tidak
+ * pernah memakainya.
  */
 export function calcRMultiple(netPnl: number, riskAmount: number): number | null {
   if (!riskAmount || riskAmount === 0) return null;
   return parseFloat((netPnl / riskAmount).toFixed(2));
-}
-
-/**
- * Check if a trade violates user's trading rules
- */
-export function checkRuleViolations(
-  trade: Partial<Trade>,
-  rules: {
-    max_risk_per_trade_pct?: number;
-    allowed_pairs?: string[];
-    allowed_hours_start?: string;
-    allowed_hours_end?: string;
-    max_daily_loss?: number;
-  }
-): string[] {
-  const violations: string[] = [];
-
-  if (rules.max_risk_per_trade_pct && trade.risk_percent) {
-    if (trade.risk_percent > rules.max_risk_per_trade_pct) {
-      violations.push(`risk_exceeded: ${trade.risk_percent}% > ${rules.max_risk_per_trade_pct}%`);
-    }
-  }
-
-  if (rules.allowed_pairs && rules.allowed_pairs.length > 0 && trade.symbol) {
-    if (!rules.allowed_pairs.includes(trade.symbol)) {
-      violations.push(`pair_not_allowed: ${trade.symbol}`);
-    }
-  }
-
-  if (rules.allowed_hours_start && rules.allowed_hours_end && trade.entry_at) {
-    const entryTime = new Date(trade.entry_at).toTimeString().slice(0, 5);
-    if (entryTime < rules.allowed_hours_start || entryTime > rules.allowed_hours_end) {
-      violations.push(`outside_trading_hours: ${entryTime}`);
-    }
-  }
-
-  return violations;
 }

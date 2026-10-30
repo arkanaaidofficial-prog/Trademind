@@ -2,6 +2,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { calcDashboardStats, buildEquityCurve, calcStatistikR, MIN_SAMPEL_LAYAK } from '@/lib/calculations/stats'
+import { periksaPelanggaran, ringkasHarian, tanggalHariIni } from '@/lib/rules'
+import { zonaWaktuBawaan } from '@/lib/calculations/analytics'
 import type { Trade, TradingRules } from '@/types/trade'
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -57,19 +59,15 @@ function Badge({ result }: { result?: string }) {
 
 type Violation = { trade: Trade; violations: string[] }
 
-function checkViolations(trades: Trade[], rules: TradingRules | null): Violation[] {
+// Satu sumber: src/lib/rules.ts. Salinan yang dulu di sini memakai
+// pemeriksaan jam yang menandai SELURUH hari sebagai pelanggaran begitu
+// jendelanya melintasi tengah malam, dan membandingkan pair dengan peduli
+// huruf besar/kecil — berbeda jawabannya dengan hook di form trade.
+function checkViolations(trades: Trade[], rules: TradingRules | null, zona: string): Violation[] {
   if (!rules) return []
+  const konteks = ringkasHarian(trades, zona, tanggalHariIni(zona))
   return trades.slice(-10).reduce<Violation[]>((acc, t) => {
-    const v: string[] = []
-    if (rules.max_risk_per_trade_pct && t.risk_percent && t.risk_percent > rules.max_risk_per_trade_pct)
-      v.push(`Risk ${t.risk_percent}% > max ${rules.max_risk_per_trade_pct}%`)
-    if (rules.allowed_pairs?.length && t.symbol && !rules.allowed_pairs.includes(t.symbol))
-      v.push(`Pair ${t.symbol} tidak diizinkan`)
-    if (rules.allowed_hours_start && rules.allowed_hours_end && t.entry_at) {
-      const entryTime = new Date(t.entry_at).toTimeString().slice(0, 5)
-      if (entryTime < rules.allowed_hours_start || entryTime > rules.allowed_hours_end)
-        v.push(`Entry di luar jam trading (${entryTime})`)
-    }
+    const v = periksaPelanggaran(t, rules, zona, konteks).map(p => p.pesan)
     if (v.length) acc.push({ trade: t, violations: v })
     return acc
   }, [])
@@ -79,18 +77,21 @@ export default function DashboardPage() {
   const [trades, setTrades] = useState<Trade[]>([])
   const [rules, setRules] = useState<TradingRules | null>(null)
   const [loading, setLoading] = useState(true)
+  const [zona, setZona] = useState<string>(() => zonaWaktuBawaan(null))
 
   useEffect(() => {
     async function load() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      const [{ data: t }, { data: r }] = await Promise.all([
+      const [{ data: t }, { data: r }, { data: prof }] = await Promise.all([
         supabase.from('trades').select('*').eq('user_id', user.id).order('entry_at', { ascending: true }),
-        supabase.from('trading_rules').select('*').eq('user_id', user.id).single(),
+        supabase.from('trading_rules').select('*').eq('user_id', user.id).maybeSingle(),
+        supabase.from('profiles').select('timezone').eq('id', user.id).maybeSingle(),
       ])
       setTrades(t ?? [])
       setRules(r)
+      setZona(zonaWaktuBawaan(prof?.timezone))
       setLoading(false)
     }
     load()
@@ -99,7 +100,7 @@ export default function DashboardPage() {
   const stats = useMemo(() => calcDashboardStats(trades), [trades])
   const statR = useMemo(() => calcStatistikR(trades), [trades])
   const equityCurve = useMemo(() => buildEquityCurve(trades), [trades])
-  const violations = useMemo(() => checkViolations(trades, rules), [trades, rules])
+  const violations = useMemo(() => checkViolations(trades, rules, zona), [trades, rules, zona])
 
   const dailyPnl = useMemo(() => {
     const map: Record<string, number> = {}

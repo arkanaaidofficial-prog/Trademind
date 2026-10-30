@@ -27,10 +27,23 @@ describe('bagian waktu lokal', () => {
     expect(bagianWaktuLokal('2026-10-30T20:00:00Z', 'Asia/Jakarta')).toEqual({
       tanggal: '2026-10-31',
       jam: 3,
+      menit: 0,
     })
     expect(bagianWaktuLokal('2026-10-30T20:00:00Z', 'UTC')).toEqual({
       tanggal: '2026-10-30',
       jam: 20,
+      menit: 0,
+    })
+  })
+
+  it('menit ikut dibaca di zona itu, bukan menit UTC', () => {
+    // Zona berselisih setengah jam (India +5:30) membongkar kode yang
+    // mengambil jam dari zona tapi menit dari UTC.
+    expect(bagianWaktuLokal('2026-10-30T16:20:00Z', 'Asia/Kolkata')).toEqual({
+      tanggal: '2026-10-30', jam: 21, menit: 50,
+    })
+    expect(bagianWaktuLokal('2026-10-30T16:20:00Z', 'Asia/Jakarta')).toEqual({
+      tanggal: '2026-10-30', jam: 23, menit: 20,
     })
   })
 
@@ -38,6 +51,7 @@ describe('bagian waktu lokal', () => {
     expect(bagianWaktuLokal('2026-10-30T17:00:00Z', 'Asia/Jakarta')).toEqual({
       tanggal: '2026-10-31',
       jam: 0,
+      menit: 0,
     })
   })
 
@@ -45,6 +59,7 @@ describe('bagian waktu lokal', () => {
     expect(bagianWaktuLokal('2026-10-30T20:00:00Z', 'Mars/Olympus')).toEqual({
       tanggal: '2026-10-30',
       jam: 20,
+      menit: 0,
     })
   })
 })

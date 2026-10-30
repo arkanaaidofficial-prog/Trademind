@@ -1,6 +1,10 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { periksaPelanggaran, ringkasHarian, tanggalHariIni } from '@/lib/rules'
+import type { AturanDagang } from '@/lib/rules'
+import { zonaWaktuBawaan } from '@/lib/calculations/analytics'
+import type { Trade } from '@/types/trade'
 
 export type Violation = {
   rule: string
@@ -15,88 +19,63 @@ type TradeInput = {
   mode?: string
 }
 
-type Rules = {
-  max_risk_per_trade_pct?: number
-  max_trades_per_day?: number
-  max_daily_loss?: number
-  allowed_pairs?: string[]
-  allowed_hours_start?: string
-  allowed_hours_end?: string
-}
-
 export function useRuleViolations(trade: TradeInput) {
-  const [rules, setRules]           = useState<Rules | null>(null)
+  const [rules, setRules]           = useState<AturanDagang | null>(null)
   const [violations, setViolations] = useState<Violation[]>([])
   const [todayCount, setTodayCount] = useState(0)
   const [todayPnl, setTodayPnl]     = useState(0)
+  const [zona, setZona]             = useState<string>(() => zonaWaktuBawaan(null))
 
-  // Load trading rules once
+  // Muat aturan + ringkasan hari berjalan satu kali.
   useEffect(() => {
     const supabase = createClient()
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return
-      const { data: r } = await supabase
-        .from('trading_rules').select('*').eq('user_id', data.user.id).single()
+
+      const [{ data: r }, { data: prof }] = await Promise.all([
+        supabase.from('trading_rules').select('*').eq('user_id', data.user.id).maybeSingle(),
+        supabase.from('profiles').select('timezone').eq('id', data.user.id).maybeSingle(),
+      ])
+      const zonaPakai = zonaWaktuBawaan(prof?.timezone)
+      setZona(zonaPakai)
       setRules(r)
 
-      // Today's trade count + pnl
-      const today = new Date().toISOString().slice(0, 10)
-      const { data: todayTrades } = await supabase
+      // Diambil dua hari ke belakang lalu disaring di zona pemilik jurnal.
+      // Memotong di batas UTC membuat trade dini hari WIB hilang dari
+      // hitungan "hari ini".
+      const batas = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
+      const { data: baris } = await supabase
         .from('trades')
-        .select('net_pnl')
+        .select('id,mode,entry_at,exit_at,result,net_pnl')
         .eq('user_id', data.user.id)
-        .gte('entry_at', today + 'T00:00:00')
-      setTodayCount(todayTrades?.length ?? 0)
-      setTodayPnl(todayTrades?.reduce((s, t) => s + (t.net_pnl ?? 0), 0) ?? 0)
+        .gte('entry_at', batas)
+
+      const ringkas = ringkasHarian(
+        (baris ?? []) as unknown as Trade[],
+        zonaPakai,
+        tanggalHariIni(zonaPakai),
+      )
+      setTodayCount(ringkas.trade_hari_ini)
+      setTodayPnl(ringkas.pnl_hari_ini)
     })
   }, [])
 
-  // Re-evaluate violations when trade input or rules change
+  // Nilai ulang setiap masukan atau aturan berubah.
   useEffect(() => {
     if (!rules) return
-    const v: Violation[] = []
-
-    // 1. Pair not allowed
-    if (rules.allowed_pairs?.length && trade.symbol) {
-      const sym = trade.symbol.toUpperCase()
-      if (!rules.allowed_pairs.map(p => p.toUpperCase()).includes(sym)) {
-        v.push({ rule: 'pair_not_allowed', severity: 'warning',
-          message: `${sym} bukan pair yang diizinkan di rules kamu` })
-      }
-    }
-
-    // 2. Risk too high
-    if (rules.max_risk_per_trade_pct && trade.risk_percent) {
-      const rp = Number(trade.risk_percent)
-      if (rp > rules.max_risk_per_trade_pct) {
-        v.push({ rule: 'risk_exceeded', severity: 'error',
-          message: `Risk ${rp}% melebihi batas ${rules.max_risk_per_trade_pct}% per trade` })
-      }
-    }
-
-    // 3. Outside trading hours
-    if (rules.allowed_hours_start && rules.allowed_hours_end && trade.entry_at) {
-      const t = new Date(trade.entry_at).toTimeString().slice(0, 5)
-      if (t < rules.allowed_hours_start || t > rules.allowed_hours_end) {
-        v.push({ rule: 'outside_hours', severity: 'warning',
-          message: `Entry jam ${t} di luar jam trading ${rules.allowed_hours_start}–${rules.allowed_hours_end}` })
-      }
-    }
-
-    // 4. Too many trades today
-    if (rules.max_trades_per_day && todayCount >= rules.max_trades_per_day) {
-      v.push({ rule: 'max_trades_reached', severity: 'error',
-        message: `Sudah ${todayCount} trade hari ini, batas maksimal ${rules.max_trades_per_day}` })
-    }
-
-    // 5. Daily loss limit
-    if (rules.max_daily_loss && todayPnl < 0 && Math.abs(todayPnl) >= rules.max_daily_loss) {
-      v.push({ rule: 'daily_loss_limit', severity: 'error',
-        message: `Kerugian hari ini $${Math.abs(todayPnl).toFixed(2)} mencapai batas $${rules.max_daily_loss}` })
-    }
-
-    setViolations(v)
-  }, [rules, trade.symbol, trade.risk_percent, trade.entry_at, todayCount, todayPnl])
+    const hasil = periksaPelanggaran(
+      {
+        symbol: trade.symbol,
+        risk_percent: trade.risk_percent === undefined ? undefined : Number(trade.risk_percent),
+        entry_at: trade.entry_at,
+        mode: trade.mode as Trade['mode'] | undefined,
+      },
+      rules,
+      zona,
+      { trade_hari_ini: todayCount, pnl_hari_ini: todayPnl },
+    )
+    setViolations(hasil.map(p => ({ rule: p.aturan, message: p.pesan, severity: p.tingkat })))
+  }, [rules, zona, trade.symbol, trade.risk_percent, trade.entry_at, trade.mode, todayCount, todayPnl])
 
   return { violations, todayCount, todayPnl, hasRules: !!rules }
 }

@@ -55,7 +55,10 @@ function zonaBisaDipakai(zona: string): boolean {
  * terikat zona mesin, yang kedua terkunci di UTC. Keduanya tidak bisa
  * diperintah memakai zona profil pengguna.
  */
-export function bagianWaktuLokal(iso: string, zona: string): { tanggal: string; jam: number } {
+export function bagianWaktuLokal(
+  iso: string,
+  zona: string,
+): { tanggal: string; jam: number; menit: number } {
   const waktu = new Date(iso);
   const dipakai = zonaBisaDipakai(zona) ? zona : 'UTC';
   const bagian = new Intl.DateTimeFormat('en-CA', {
@@ -64,13 +67,18 @@ export function bagianWaktuLokal(iso: string, zona: string): { tanggal: string; 
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
+    minute: '2-digit',
     hour12: false,
   }).formatToParts(waktu);
 
   const ambil = (jenis: string) => bagian.find(b => b.type === jenis)?.value ?? '';
   // Beberapa mesin memberi "24" untuk tengah malam.
   const jam = Number(ambil('hour')) % 24;
-  return { tanggal: `${ambil('year')}-${ambil('month')}-${ambil('day')}`, jam };
+  // Menit WAJIB diambil dari zona yang sama, bukan dari UTC: ada zona
+  // yang berselisih setengah jam (India +5:30) dan 45 menit
+  // (Nepal +5:45) — menit UTC akan meleset di sana.
+  const menit = Number(ambil('minute'));
+  return { tanggal: `${ambil('year')}-${ambil('month')}-${ambil('day')}`, jam, menit };
 }
 
 /** Zona dari profil pengguna, atau zona mesin kalau profilnya kosong. */
