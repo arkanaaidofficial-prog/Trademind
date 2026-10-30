@@ -3,6 +3,8 @@ import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, Cell } from 'recharts'
 import type { Trade } from '@/types/trade'
+import { calcPerformanceByDimension } from '@/lib/calculations/stats'
+import { kelompokPerHari, kelompokPerJam, kurvaEkuitasR, zonaWaktuBawaan } from '@/lib/calculations/analytics'
 
 type Psych = {
   trade_id: string
@@ -15,52 +17,21 @@ type Psych = {
   oversized: boolean | null
 }
 
-type Dim = { label: string; trades: number; wins: number; net_pnl: number; win_rate: number }
-type HourDim = { hour: string; trades: number; win_rate: number; net_pnl: number }
+type Dim = { label: string; trades: number; wins: number; net_pnl: number; win_rate: number; avg_r: number | null }
+type HourDim = ReturnType<typeof kelompokPerJam>[number]
 
+// Pengelompokan dimensi memakai calcPerformanceByDimension yang sudah
+// diuji: pembagi win_rate adalah trade SELESAI, dan avg_r ikut terbawa
+// supaya trade bot (yang tidak punya nominal) tetap terbaca.
 function groupBy(trades: Trade[], key: keyof Trade): Dim[] {
-  const map = new Map<string, Trade[]>()
-  for (const t of trades) {
-    const k = String(t[key] ?? 'Unknown')
-    if (!map.has(k)) map.set(k, [])
-    map.get(k)!.push(t)
-  }
-  return Array.from(map.entries()).map(([label, ts]) => ({
-    label,
-    trades: ts.length,
-    wins: ts.filter(t => t.result === 'win').length,
-    net_pnl: Math.round(ts.reduce((s, t) => s + (t.net_pnl ?? 0), 0) * 100) / 100,
-    win_rate: Math.round((ts.filter(t => t.result === 'win').length / ts.length) * 100),
-  })).sort((a, b) => b.net_pnl - a.net_pnl)
-}
-
-function groupByDay(trades: Trade[]) {
-  const map = new Map<string, { pnl: number; trades: number }>()
-  for (const t of trades) {
-    const date = t.entry_at.slice(0, 10)
-    const prev = map.get(date) ?? { pnl: 0, trades: 0 }
-    map.set(date, { pnl: prev.pnl + (t.net_pnl ?? 0), trades: prev.trades + 1 })
-  }
-  return Array.from(map.entries())
-    .map(([date, v]) => ({ date, pnl: Math.round(v.pnl * 100) / 100, trades: v.trades }))
-    .sort((a, b) => a.date.localeCompare(b.date))
-}
-
-function groupByHour(trades: Trade[]): HourDim[] {
-  const map = new Map<number, Trade[]>()
-  for (const t of trades) {
-    const h = new Date(t.entry_at).getHours()
-    if (!map.has(h)) map.set(h, [])
-    map.get(h)!.push(t)
-  }
-  return Array.from(map.entries())
-    .map(([h, ts]) => ({
-      hour: `${String(h).padStart(2, '0')}:00`,
-      trades: ts.length,
-      win_rate: Math.round((ts.filter(t => t.result === 'win').length / ts.length) * 100),
-      net_pnl: Math.round(ts.reduce((s, t) => s + (t.net_pnl ?? 0), 0) * 100) / 100,
-    }))
-    .sort((a, b) => a.hour.localeCompare(b.hour))
+  return calcPerformanceByDimension(trades, t => String(t[key] ?? 'Unknown')).map(d => ({
+    label: d.label,
+    trades: d.total,
+    wins: d.wins,
+    net_pnl: d.net_pnl,
+    win_rate: Math.round(d.win_rate),
+    avg_r: d.avg_r,
+  }))
 }
 
 const CT = ({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; name: string }>; label?: string }) => {
@@ -84,7 +55,7 @@ function DimTable({ data }: { data: Dim[] }) {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-[#2a2a3a]">
-            {['Label', 'Trades', 'Win Rate', 'Net P/L'].map(h => (
+            {['Label', 'Trades', 'Win Rate', 'Avg R', 'Net P/L'].map(h => (
               <th key={h} className="text-left text-gray-400 text-xs font-medium px-4 py-3">{h}</th>
             ))}
           </tr>
@@ -95,6 +66,9 @@ function DimTable({ data }: { data: Dim[] }) {
               <td className="px-4 py-3 text-gray-200 text-xs font-medium">{d.label}</td>
               <td className="px-4 py-3 text-gray-400 text-xs">{d.trades}</td>
               <td className={`px-4 py-3 text-xs font-bold ${d.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{d.win_rate}%</td>
+              <td className={`px-4 py-3 text-xs font-bold font-mono ${d.avg_r === null ? 'text-gray-600' : d.avg_r >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {d.avg_r === null ? '—' : `${d.avg_r >= 0 ? '+' : ''}${d.avg_r.toFixed(2)}R`}
+              </td>
               <td className={`px-4 py-3 text-xs font-bold font-mono ${d.net_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                 {d.net_pnl >= 0 ? '+' : ''}${d.net_pnl}
               </td>
@@ -123,17 +97,22 @@ export default function AnalyticsPage() {
   const [psychData, setPsychData] = useState<Psych[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('pair')
+  // Zona profil, bukan zona peramban: tanggal dan jam harus memakai
+  // kalender yang sama di seluruh halaman ini.
+  const [zona, setZona] = useState<string>(() => zonaWaktuBawaan(null))
 
   useEffect(() => {
     const supabase = createClient()
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return
-      const [{ data: t }, { data: p }] = await Promise.all([
+      const [{ data: t }, { data: p }, { data: prof }] = await Promise.all([
         supabase.from('trades').select('*').eq('user_id', data.user.id).order('entry_at', { ascending: true }),
         supabase.from('trade_psychology').select('*').eq('user_id', data.user.id),
+        supabase.from('profiles').select('timezone').eq('id', data.user.id).maybeSingle(),
       ])
       setTrades(t ?? [])
       setPsychData(p ?? [])
+      setZona(zonaWaktuBawaan(prof?.timezone))
       setLoading(false)
     })
   }, [])
@@ -149,8 +128,9 @@ export default function AnalyticsPage() {
     return []
   }, [trades, tab])
 
-  const dayData = useMemo(() => groupByDay(trades), [trades])
-  const hourData = useMemo(() => groupByHour(trades), [trades])
+  const dayData = useMemo(() => kelompokPerHari(trades, zona), [trades, zona])
+  const hourData = useMemo(() => kelompokPerJam(trades, zona), [trades, zona])
+  const kurvaR = useMemo(() => kurvaEkuitasR(trades, zona), [trades, zona])
 
   // Emotion analytics - join trades + psychology
   const emotionData = useMemo(() => {
@@ -167,6 +147,7 @@ export default function AnalyticsPage() {
     }
     return Array.from(byEmotion.entries()).map(([emotion, v]) => {
       const wins = v.trades.filter(t => t.result === 'win').length
+      const selesai = v.trades.filter(t => t.result !== undefined && t.result !== null).length
       const net_pnl = Math.round(v.trades.reduce((s, t) => s + (t.net_pnl ?? 0), 0) * 100) / 100
       const avg_discipline = v.discipline.length
         ? Math.round(v.discipline.reduce((s, d) => s + d, 0) / v.discipline.length * 10) / 10
@@ -176,7 +157,7 @@ export default function AnalyticsPage() {
         trades: v.trades.length,
         wins,
         net_pnl,
-        win_rate: Math.round((wins / v.trades.length) * 100),
+        win_rate: selesai > 0 ? Math.round((wins / selesai) * 100) : 0,
         avg_discipline,
       }
     }).sort((a, b) => b.net_pnl - a.net_pnl)
@@ -195,11 +176,19 @@ export default function AnalyticsPage() {
   }, [trades, psychData, tab])
 
   const equityCurve = useMemo(() => {
+    // Hanya trade yang P/L-nya benar-benar ada, diurutkan pada waktu
+    // KELUAR. Versi lama memasukkan posisi terbuka sebagai titik datar
+    // dan mengurutkan pada waktu masuk.
     let eq = 0
-    return trades.map(t => {
-      eq += (t.net_pnl ?? 0)
-      return { date: t.entry_at.slice(0, 10), equity: Math.round(eq * 100) / 100 }
-    })
+    return trades
+      .filter(t => t.net_pnl !== undefined && t.net_pnl !== null)
+      .slice()
+      .sort((a, b) =>
+        new Date(a.exit_at ?? a.entry_at).getTime() - new Date(b.exit_at ?? b.entry_at).getTime())
+      .map(t => {
+        eq += (t.net_pnl ?? 0)
+        return { date: (t.exit_at ?? t.entry_at).slice(0, 10), equity: Math.round(eq * 100) / 100 }
+      })
   }, [trades])
 
   if (loading) return <div className="flex items-center justify-center h-full"><p className="text-gray-400 text-sm animate-pulse">Memuat analytics...</p></div>
@@ -218,7 +207,9 @@ export default function AnalyticsPage() {
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-white font-bold text-lg">Analytics</h1>
-        <p className="text-gray-400 text-xs mt-0.5">{trades.length} trades · {psychData.length} psychology records</p>
+        <p className="text-gray-400 text-xs mt-0.5">
+          {trades.length} trades · {psychData.length} psychology records · tanggal &amp; jam dalam {zona}
+        </p>
       </div>
 
       {/* Equity curve */}
@@ -231,6 +222,28 @@ export default function AnalyticsPage() {
               <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `$${v}`} />
               <Tooltip content={<CT />} />
               <Line type="monotone" dataKey="equity" stroke="#3b82f6" strokeWidth={2} dot={false} name="Equity" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Kurva R — kurva ekuitas untuk trade yang tidak punya nominal
+          sama sekali, mis. kiriman bot-futures. */}
+      {kurvaR.length > 1 && (
+        <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl p-5">
+          <div className="flex items-baseline justify-between mb-4">
+            <h3 className="text-gray-300 text-sm font-semibold">Kurva R Kumulatif</h3>
+            <span className="text-gray-500 text-xs">
+              {kurvaR.length} trade ber-R · total {kurvaR[kurvaR.length - 1].r >= 0 ? '+' : ''}
+              {kurvaR[kurvaR.length - 1].r.toFixed(2)}R
+            </span>
+          </div>
+          <ResponsiveContainer width="100%" height={160}>
+            <LineChart data={kurvaR}>
+              <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+              <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `${v}R`} />
+              <Tooltip content={<CT />} />
+              <Line type="monotone" dataKey="r" stroke="#a855f7" strokeWidth={2} dot={false} name="R kumulatif" />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -292,13 +305,16 @@ export default function AnalyticsPage() {
             <div className="border-t border-[#2a2a3a] overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="border-b border-[#2a2a3a]">
-                  {['Tanggal','Trades','Net P/L'].map(h => <th key={h} className="text-left text-gray-400 text-xs font-medium px-4 py-3">{h}</th>)}
+                  {['Tanggal','Trades','Total R','Net P/L'].map(h => <th key={h} className="text-left text-gray-400 text-xs font-medium px-4 py-3">{h}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-[#1e1e2e]">
                   {dayData.map((d, i) => (
                     <tr key={i} className="hover:bg-[#1a1a2a] transition-colors">
                       <td className="px-4 py-3 text-gray-300 text-xs">{d.date}</td>
                       <td className="px-4 py-3 text-gray-400 text-xs">{d.trades}</td>
+                      <td className={`px-4 py-3 text-xs font-bold font-mono ${d.r === null ? 'text-gray-600' : d.r >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {d.r === null ? '—' : `${d.r >= 0 ? '+' : ''}${d.r.toFixed(2)}R`}
+                      </td>
                       <td className={`px-4 py-3 text-xs font-bold font-mono ${d.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                         {d.pnl >= 0 ? '+' : ''}${d.pnl}
                       </td>
@@ -330,14 +346,20 @@ export default function AnalyticsPage() {
             <div className="border-t border-[#2a2a3a] overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="border-b border-[#2a2a3a]">
-                  {['Jam','Trades','Win Rate','Net P/L'].map(h => <th key={h} className="text-left text-gray-400 text-xs font-medium px-4 py-3">{h}</th>)}
+                  {['Jam','Trades','Selesai','Win Rate','Avg R','Net P/L'].map(h => <th key={h} className="text-left text-gray-400 text-xs font-medium px-4 py-3">{h}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-[#1e1e2e]">
                   {hourData.map((d, i) => (
                     <tr key={i} className="hover:bg-[#1a1a2a] transition-colors">
                       <td className="px-4 py-3 text-gray-300 text-xs font-mono">{d.hour}</td>
                       <td className="px-4 py-3 text-gray-400 text-xs">{d.trades}</td>
-                      <td className={`px-4 py-3 text-xs font-bold ${d.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{d.win_rate}%</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{d.selesai}</td>
+                      <td className={`px-4 py-3 text-xs font-bold ${d.selesai === 0 ? 'text-gray-600' : d.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {d.selesai === 0 ? '—' : `${d.win_rate}%`}
+                      </td>
+                      <td className={`px-4 py-3 text-xs font-bold font-mono ${d.avg_r === null ? 'text-gray-600' : d.avg_r >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {d.avg_r === null ? '—' : `${d.avg_r >= 0 ? '+' : ''}${d.avg_r.toFixed(2)}R`}
+                      </td>
                       <td className={`px-4 py-3 text-xs font-bold font-mono ${d.net_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                         {d.net_pnl >= 0 ? '+' : ''}${d.net_pnl}
                       </td>
