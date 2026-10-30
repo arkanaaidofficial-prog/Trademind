@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { calcDashboardStats, buildEquityCurve } from '@/lib/calculations/stats'
+import { calcDashboardStats, buildEquityCurve, calcStatistikR, MIN_SAMPEL_LAYAK } from '@/lib/calculations/stats'
 import type { Trade, TradingRules } from '@/types/trade'
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -97,6 +97,7 @@ export default function DashboardPage() {
   }, [])
 
   const stats = useMemo(() => calcDashboardStats(trades), [trades])
+  const statR = useMemo(() => calcStatistikR(trades), [trades])
   const equityCurve = useMemo(() => buildEquityCurve(trades), [trades])
   const violations = useMemo(() => checkViolations(trades, rules), [trades, rules])
 
@@ -183,6 +184,54 @@ export default function DashboardPage() {
         <StatCard label="Best Trade" value={`+$${stats.best_trade_pnl}`} sub={stats.best_pair} color="green" icon="trophy" />
         <StatCard label="Max Drawdown" value={`-$${stats.max_drawdown}`} color="red" icon="down" />
       </div>
+
+      {/* Cakupan data: jangan biarkan "tidak ada angkanya" terlihat seperti nol */}
+      {stats.trades_tanpa_pnl > 0 && (
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-3">
+          <p className="text-blue-300 text-xs">
+            <span className="font-semibold">{stats.trades_tanpa_pnl} dari {stats.total_trades} trade selesai</span>{' '}
+            belum punya nominal P/L — biasanya kiriman bot, yang tahu hasil dan R tapi tidak tahu modal Bapak.
+            Semua angka dolar di atas dihitung dari {stats.trades_dengan_pnl} trade sisanya. Pakai baris R di bawah untuk menilai bot.
+          </p>
+        </div>
+      )}
+
+      {/* Stats Row 3 - satuan R. Ini satu-satunya bahasa yang dipakai bot. */}
+      {statR.trades_dengan_r > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-baseline gap-2">
+            <h3 className="text-gray-300 text-sm font-semibold">Kinerja dalam R</h3>
+            <span className="text-gray-500 text-xs">{statR.trades_dengan_r} trade ber-R</span>
+            {!statR.cukup_sampel && (
+              <span className="bg-amber-500/20 text-amber-300 text-[10px] px-2 py-0.5 rounded-lg">
+                sampel belum cukup (&lt;{MIN_SAMPEL_LAYAK})
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard
+              label="Expectancy (R)"
+              value={`${statR.avg_r >= 0 ? '+' : ''}${statR.avg_r.toFixed(2)}R`}
+              sub={`Total ${statR.total_r >= 0 ? '+' : ''}${statR.total_r.toFixed(2)}R`}
+              color={statR.avg_r >= 0 ? 'green' : 'red'} icon="flash" />
+            <StatCard
+              label="Win Rate (R)"
+              value={`${statR.win_rate_r}%`}
+              sub={statR.wilson_bawah_95 === null ? undefined : `batas bawah 95%: ${statR.wilson_bawah_95.toFixed(1)}%`}
+              color="blue" icon="target" />
+            <StatCard
+              label="Payoff (R)"
+              value={statR.payoff_r === null ? '—' : `${statR.payoff_r.toFixed(2)}x`}
+              sub={`+${statR.avg_r_menang.toFixed(2)}R / -${statR.avg_r_kalah.toFixed(2)}R`}
+              color="gold" icon="up" />
+            <StatCard
+              label="Max DD (R)"
+              value={`-${statR.max_drawdown_r.toFixed(2)}R`}
+              sub={`beruntun kalah terpanjang: ${statR.beruntun_kalah_max}`}
+              color="red" icon="down" />
+          </div>
+        </div>
+      )}
 
       {/* Best/Worst */}
       <div className="grid grid-cols-2 gap-3">

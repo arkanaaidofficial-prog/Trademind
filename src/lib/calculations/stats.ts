@@ -17,7 +17,11 @@
 //   - metrik UANG hanya memakai baris yang `net_pnl`-nya benar-benar ada,
 //     dan jumlah baris yang dilewati dilaporkan lewat `trades_tanpa_pnl`.
 
-import type { Trade, DashboardStats, PerformanceByDimension } from '@/types/trade';
+import type { Trade, DashboardStats, PerformanceByDimension, StatistikR } from '@/types/trade';
+
+/** Jumlah trade minimum sebelum win rate dan expectancy pantas dipercaya.
+ *  Di bawah ini hasilnya masih didominasi keberuntungan. */
+export const MIN_SAMPEL_LAYAK = 30;
 
 /** Waktu sebuah trade direalisasikan. P/L masuk ke saldo saat KELUAR,
  *  bukan saat masuk — posisi bot bisa menggantung berhari-hari, jadi
@@ -48,6 +52,125 @@ function pnl(t: Trade): number {
 
 function bulat2(n: number): number {
   return parseFloat(n.toFixed(2));
+}
+
+/** R adalah angka kecil (−1 sampai +5). Dibulatkan jauh di belakang koma
+ *  supaya jati diri avg_r = WR x avgMenang − LR x avgKalah tetap utuh;
+ *  pembulatan untuk mata dilakukan di lapis tampilan, bukan di sini. */
+function bulat8(n: number): number {
+  return parseFloat(n.toFixed(8));
+}
+
+/**
+ * Nilai R satu trade, atau null kalau risikonya tidak diketahui.
+ *
+ * Ini jembatan antara dua dunia. bot-futures mengisi `r_multiple` dan
+ * tidak pernah mengisi nominal. Trade manual biasanya sebaliknya: ada
+ * `net_pnl` dan `risk_amount` tapi `r_multiple` kosong. Keduanya harus
+ * bisa dibaca dalam satuan yang sama, kalau tidak perbandingan
+ * bot-lawan-manual mustahil dilakukan.
+ *
+ * null, BUKAN nol: trade yang risikonya tidak dicatat bukan trade ber-R nol.
+ */
+export function nilaiR(t: Trade): number | null {
+  if (t.r_multiple !== undefined && t.r_multiple !== null && Number.isFinite(t.r_multiple)) {
+    return t.r_multiple;
+  }
+  const pnlNilai = t.net_pnl;
+  const risiko = t.risk_amount;
+  if (
+    pnlNilai !== undefined && pnlNilai !== null && Number.isFinite(pnlNilai) &&
+    risiko !== undefined && risiko !== null && Number.isFinite(risiko) && risiko > 0
+  ) {
+    return pnlNilai / risiko;
+  }
+  return null;
+}
+
+/** Batas bawah selang Wilson 95% untuk sebuah proporsi, dalam persen.
+ *  Dipakai supaya "win rate 60% dari 5 trade" tidak dibaca sebagai
+ *  janji 60% — batas bawahnya cuma 23%. */
+function wilsonBawah95(menang: number, n: number): number | null {
+  if (n <= 0) return null;
+  const z = 1.959963985;
+  const p = menang / n;
+  const penyebut = 1 + (z * z) / n;
+  const pusat = p + (z * z) / (2 * n);
+  const margin = z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n));
+  return Math.max(0, ((pusat - margin) / penyebut) * 100);
+}
+
+/**
+ * Statistik berbasis R — satu-satunya bahasa kinerja yang dipakai bot.
+ *
+ * Semua angka di sini hidup tanpa satu dolar pun tercatat, jadi hasil
+ * kerja bot akhirnya ikut terbaca di ringkasan.
+ */
+export function calcStatistikR(trades: Trade[]): StatistikR {
+  const berR = trades
+    .map(t => ({ t, r: nilaiR(t) }))
+    .filter((x): x is { t: Trade; r: number } => x.r !== null)
+    .sort((a, b) => urutRealisasi(a.t, b.t));
+
+  const n = berR.length;
+  const nilai = berR.map(x => x.r);
+  const menang = nilai.filter(r => r > 0);
+  const kalah = nilai.filter(r => r < 0);
+
+  const totalR = nilai.reduce((s, r) => s + r, 0);
+  const jumlahMenang = menang.reduce((s, r) => s + r, 0);
+  const jumlahKalah = Math.abs(kalah.reduce((s, r) => s + r, 0));
+
+  const avgR = n > 0 ? totalR / n : 0;
+  const avgMenang = menang.length > 0 ? jumlahMenang / menang.length : 0;
+  const avgKalah = kalah.length > 0 ? jumlahKalah / kalah.length : 0;
+
+  // Drawdown pada kurva R terealisasi.
+  let puncak = 0;
+  let ekuitas = 0;
+  let ddMax = 0;
+  // Beruntun dihitung pada urutan yang sama — urutan keluar.
+  let beruntunKalah = 0;
+  let beruntunKalahMax = 0;
+  let beruntunMenang = 0;
+  let beruntunMenangMax = 0;
+
+  for (const r of nilai) {
+    ekuitas += r;
+    if (ekuitas > puncak) puncak = ekuitas;
+    const dd = puncak - ekuitas;
+    if (dd > ddMax) ddMax = dd;
+
+    if (r < 0) {
+      beruntunKalah += 1;
+      beruntunMenang = 0;
+      if (beruntunKalah > beruntunKalahMax) beruntunKalahMax = beruntunKalah;
+    } else if (r > 0) {
+      beruntunMenang += 1;
+      beruntunKalah = 0;
+      if (beruntunMenang > beruntunMenangMax) beruntunMenangMax = beruntunMenang;
+    } else {
+      // R tepat nol memutus kedua rentetan: bukan menang, bukan kalah.
+      beruntunKalah = 0;
+      beruntunMenang = 0;
+    }
+  }
+
+  return {
+    trades_dengan_r: n,
+    total_r: bulat8(totalR),
+    avg_r: bulat8(avgR),
+    avg_r_menang: bulat8(avgMenang),
+    avg_r_kalah: bulat8(avgKalah),
+    payoff_r: avgKalah > 0 ? bulat8(avgMenang / avgKalah) : null,
+    win_rate_r: n > 0 ? bulat2((menang.length / n) * 100) : 0,
+    wilson_bawah_95: n > 0 ? bulat8(wilsonBawah95(menang.length, n) as number) : null,
+    profit_factor_r: jumlahKalah > 0 ? bulat8(jumlahMenang / jumlahKalah) : null,
+    max_drawdown_r: bulat8(ddMax),
+    beruntun_kalah_max: beruntunKalahMax,
+    beruntun_menang_max: beruntunMenangMax,
+    cukup_sampel: n >= MIN_SAMPEL_LAYAK,
+  };
 }
 
 /**
@@ -193,6 +316,8 @@ type DimensionGroup = {
   dengan_pnl: number;
   gross_pnl: number;
   net_pnl: number;
+  dengan_r: number;
+  total_r: number;
 };
 type DimensionMap = Record<string, DimensionGroup>;
 
@@ -200,7 +325,10 @@ function groupByDimension(trades: Trade[], keyFn: (t: Trade) => string): Dimensi
   return trades.reduce((acc, t) => {
     const key = keyFn(t);
     if (!acc[key]) {
-      acc[key] = { label: key, total: 0, selesai: 0, wins: 0, losses: 0, dengan_pnl: 0, gross_pnl: 0, net_pnl: 0 };
+      acc[key] = {
+        label: key, total: 0, selesai: 0, wins: 0, losses: 0,
+        dengan_pnl: 0, gross_pnl: 0, net_pnl: 0, dengan_r: 0, total_r: 0,
+      };
     }
     const g = acc[key];
     g.total++;
@@ -211,6 +339,11 @@ function groupByDimension(trades: Trade[], keyFn: (t: Trade) => string): Dimensi
       g.dengan_pnl++;
       g.gross_pnl += (t.gross_pnl ?? pnl(t));
       g.net_pnl += pnl(t);
+    }
+    const r = nilaiR(t);
+    if (r !== null) {
+      g.dengan_r++;
+      g.total_r += r;
     }
     return acc;
   }, {} as DimensionMap);
@@ -230,6 +363,9 @@ export function calcPerformanceByDimension(
     // hasil, memasukkannya hanya menurunkan win rate secara semu.
     win_rate: g.selesai > 0 ? parseFloat(((g.wins / g.selesai) * 100).toFixed(1)) : 0,
     trades_dengan_pnl: g.dengan_pnl,
+    trades_dengan_r: g.dengan_r,
+    // null, bukan 0: kelompok tanpa satu pun R belum punya kabar apa-apa.
+    avg_r: g.dengan_r > 0 ? bulat8(g.total_r / g.dengan_r) : null,
     gross_pnl: bulat2(g.gross_pnl),
     net_pnl: bulat2(g.net_pnl),
     avg_pnl: g.dengan_pnl > 0 ? bulat2(g.net_pnl / g.dengan_pnl) : 0,

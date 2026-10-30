@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import type { BotConfig } from '@/types/trade'
+import type { BotConfig, Trade } from '@/types/trade'
+import { calcStatistikR } from '@/lib/calculations/stats'
 import { Icons } from '@/components/ui/Icons'
 
 const inp = 'w-full bg-[#1a1a2a] border border-[#2a2a3a] text-gray-200 text-sm px-3 py-2.5 rounded-xl focus:outline-none focus:border-blue-500 transition-colors disabled:cursor-not-allowed disabled:opacity-60'
@@ -11,8 +12,22 @@ const lbl = 'block text-gray-400 text-xs font-medium mb-1.5'
 
 const EMPTY_FORM = { name:'', version:'', mode:'live', exchange:'', strategy:'', notes:'' }
 
-type BotWithStats = BotConfig & { trade_count: number; net_pnl: number }
-type BotTradeStat = { id?: string; net_pnl: number | null }
+type BotWithStats = BotConfig & {
+  trade_count: number
+  net_pnl: number
+  trades_dengan_pnl: number
+  trades_dengan_r: number
+  total_r: number
+  avg_r: number
+}
+type BotTradeStat = {
+  id?: string
+  net_pnl: number | null
+  r_multiple: number | null
+  risk_amount: number | null
+  exit_at: string | null
+  entry_at: string
+}
 
 export default function BotPage() {
   const [bots,     setBots]     = useState<BotWithStats[]>([])
@@ -54,18 +69,30 @@ export default function BotPage() {
     const botsWithStats: BotWithStats[] = await Promise.all(
       (botList ?? []).map(async b => {
         const [{ data: byId }, { data: byName }] = await Promise.all([
-          supabase.from('trades').select('id,net_pnl').eq('user_id', user.id).eq('bot_id', b.id),
-          supabase.from('trades').select('id,net_pnl').eq('user_id', user.id).eq('bot_name', b.name),
+          supabase.from('trades').select('id,net_pnl,r_multiple,risk_amount,entry_at,exit_at')
+            .eq('user_id', user.id).eq('bot_id', b.id),
+          supabase.from('trades').select('id,net_pnl,r_multiple,risk_amount,entry_at,exit_at')
+            .eq('user_id', user.id).eq('bot_name', b.name),
         ])
         const unique = new Map<string, BotTradeStat>()
         ;[...(byId ?? []), ...(byName ?? [])].forEach((trade, index) => {
           unique.set(trade.id ?? `row-${index}`, trade)
         })
         const trades = Array.from(unique.values())
+        // bot-futures tidak pernah mengirim net_pnl - dia tidak tahu modal
+        // pemilik jurnal. Menjumlahkan (net_pnl ?? 0) berarti kartu ini
+        // selalu memajang +$0,00 berapa pun hasil kerja bot. R adalah
+        // satu-satunya satuan yang benar-benar dia isi.
+        const statR = calcStatistikR(trades as unknown as Trade[])
+        const denganPnl = trades.filter(t => t.net_pnl !== null && t.net_pnl !== undefined)
         return {
           ...b,
           trade_count: trades.length,
-          net_pnl: parseFloat(trades.reduce((sum, trade) => sum + (trade.net_pnl ?? 0), 0).toFixed(2)),
+          trades_dengan_pnl: denganPnl.length,
+          net_pnl: parseFloat(denganPnl.reduce((sum, trade) => sum + (trade.net_pnl ?? 0), 0).toFixed(2)),
+          trades_dengan_r: statR.trades_dengan_r,
+          total_r: statR.total_r,
+          avg_r: statR.avg_r,
         }
       })
     )
@@ -215,18 +242,38 @@ export default function BotPage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-[#1e1e2e]">
+              <div className="grid grid-cols-3 gap-2 pt-1 border-t border-[#1e1e2e]">
                 <div>
                   <p className="text-gray-500 text-[10px] uppercase tracking-wide">Trades</p>
                   <p className="text-gray-200 text-sm font-bold">{b.trade_count}</p>
                 </div>
                 <div>
+                  <p className="text-gray-500 text-[10px] uppercase tracking-wide">Total R</p>
+                  {b.trades_dengan_r > 0 ? (
+                    <p className={`text-sm font-bold font-mono ${b.total_r >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {b.total_r >= 0 ? '+' : ''}{b.total_r.toFixed(2)}R
+                    </p>
+                  ) : (
+                    <p className="text-gray-600 text-sm font-bold font-mono">—</p>
+                  )}
+                </div>
+                <div>
                   <p className="text-gray-500 text-[10px] uppercase tracking-wide">Net P/L</p>
-                  <p className={`text-sm font-bold font-mono ${b.net_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {b.net_pnl >= 0 ? '+' : ''}${b.net_pnl}
-                  </p>
+                  {b.trades_dengan_pnl > 0 ? (
+                    <p className={`text-sm font-bold font-mono ${b.net_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {b.net_pnl >= 0 ? '+' : ''}${b.net_pnl}
+                    </p>
+                  ) : (
+                    // Bedakan tegas "belum ada nominalnya" dari "nol dolar".
+                    <p className="text-gray-600 text-sm font-bold font-mono" title="Bot tidak mengirim nominal P/L">—</p>
+                  )}
                 </div>
               </div>
+              {b.trades_dengan_r > 0 && (
+                <p className="text-gray-600 text-[10px]">
+                  rata-rata {b.avg_r >= 0 ? '+' : ''}{b.avg_r.toFixed(2)}R dari {b.trades_dengan_r} trade ber-R
+                </p>
+              )}
 
               {b.notes && <p className="text-gray-500 text-xs">{b.notes}</p>}
               <div className="flex items-center justify-between">

@@ -231,9 +231,40 @@ export interface PerformanceByDimension {
   losses: number;
   win_rate: number;
   trades_dengan_pnl: number;
+  trades_dengan_r: number;
+  /** null kalau kelompok ini belum punya satu pun trade ber-R. */
+  avg_r: number | null;
   gross_pnl: number;
   net_pnl: number;
   avg_pnl: number;
+}
+
+/**
+ * Statistik berbasis R-multiple.
+ *
+ * Dipisah dari DashboardStats karena hidup tanpa satu dolar pun: trade
+ * bot punya R tapi tidak punya nominal, trade manual sering sebaliknya.
+ */
+export interface StatistikR {
+  trades_dengan_r: number;
+  total_r: number;
+  /** Expectancy dalam R — angka tunggal paling informatif di sebuah jurnal. */
+  avg_r: number;
+  avg_r_menang: number;
+  /** Besaran positif, bukan negatif. */
+  avg_r_kalah: number;
+  /** avg_r_menang / avg_r_kalah. null kalau belum ada kekalahan. */
+  payoff_r: number | null;
+  /** Ditentukan dari TANDA R. R tepat nol bukan kemenangan. */
+  win_rate_r: number;
+  /** Batas bawah selang Wilson 95% untuk win_rate_r, dalam persen. */
+  wilson_bawah_95: number | null;
+  profit_factor_r: number | null;
+  max_drawdown_r: number;
+  beruntun_kalah_max: number;
+  beruntun_menang_max: number;
+  /** false selama trade ber-R masih di bawah MIN_SAMPEL_LAYAK. */
+  cukup_sampel: boolean;
 }
 
 export interface TradeFilter {
