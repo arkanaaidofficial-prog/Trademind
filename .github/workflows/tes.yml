@@ -1,0 +1,40 @@
+name: Tes & Periksa Tipe
+
+# Tes hanya berguna kalau ada yang MENJALANKANNYA. Tanpa alur kerja ini,
+# 93 tes di repo cuma berkas yang tidur sampai ada yang ingat mengetik
+# `npm test`.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  periksa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Pasang dependensi
+        run: npm ci
+
+      - name: Periksa tipe
+        run: npm run type-check
+
+      - name: Jalankan tes
+        run: npm test
+
+      - name: Build produksi
+        run: npm run build
+        env:
+          # Nilai contoh. Build Next.js hanya butuh variabel ini ADA;
+          # tidak ada panggilan jaringan yang terjadi saat build.
+          NEXT_PUBLIC_SUPABASE_URL: https://contoh.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: kunci-contoh-untuk-build

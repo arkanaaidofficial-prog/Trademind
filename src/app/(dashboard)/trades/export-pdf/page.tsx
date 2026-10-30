@@ -150,7 +150,7 @@ export default function ExportPdfPage() {
         },
       })
 
-      const pageCount = (doc.internal as { getNumberOfPages(): number }).getNumberOfPages()
+      const pageCount = doc.getNumberOfPages()
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i)
         doc.setFontSize(7)

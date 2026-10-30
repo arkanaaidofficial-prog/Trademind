@@ -15,7 +15,10 @@ export function parsePendingWatchlistEntry(raw: string | null): PendingWatchlist
 
   try {
     const parsed = JSON.parse(raw) as Partial<PendingWatchlistEntry>
-    if (!parsed.id || !parsed.symbol || !Number.isFinite(parsed.createdAt)) return null
+    // Number.isFinite() TIDAK mempersempit `number | undefined`.
+    // typeof-nya yang mempersempit.
+    if (!parsed.id || !parsed.symbol) return null
+    if (typeof parsed.createdAt !== 'number' || !Number.isFinite(parsed.createdAt)) return null
 
     return {
       id: parsed.id,

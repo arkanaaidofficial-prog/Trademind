@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { PENDING_WATCHLIST_ENTRY_KEY, parsePendingWatchlistEntry } from '@/lib/watchlist/pending'
+import type { PendingWatchlistEntry } from '@/lib/watchlist/pending'
 
 const MAX_PENDING_AGE_MS = 60 * 60 * 1000
 
@@ -32,7 +33,11 @@ export default function PendingWatchlistMarker() {
 
     let active = true
 
-    async function markEntered() {
+    // `pending` diterima sebagai ARGUMEN, bukan ditangkap dari lingkup
+    // luar. Deklarasi fungsi di-hoist, jadi TypeScript tidak bisa
+    // memastikan penjagaan `if (!pending) return` di atas sudah berjalan
+    // saat badan fungsi ini dijalankan — dan memang secara tipe ia benar.
+    async function markEntered(entri: PendingWatchlistEntry) {
       const supabase = createClient()
       const { data: { user }, error: userError } = await supabase.auth.getUser()
       if (!active || userError || !user) return
@@ -45,13 +50,13 @@ export default function PendingWatchlistMarker() {
         .single()
 
       if (!active || tradeError || !trade?.symbol) return
-      if (String(trade.symbol).toUpperCase() !== pending.symbol) return
+      if (String(trade.symbol).toUpperCase() !== entri.symbol) return
 
       const now = new Date().toISOString()
       const { error } = await supabase
         .from('coin_watchlist')
         .update({ watch_status: 'entered', last_reviewed_at: now, updated_at: now })
-        .eq('id', pending.id)
+        .eq('id', entri.id)
         .eq('user_id', user.id)
 
       if (!active) return
@@ -65,7 +70,7 @@ export default function PendingWatchlistMarker() {
       toast.success('Watchlist ditandai Entered')
     }
 
-    markEntered()
+    markEntered(pending)
 
     return () => {
       active = false
