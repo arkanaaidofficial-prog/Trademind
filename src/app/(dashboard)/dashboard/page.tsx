@@ -172,7 +172,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label="Net P/L" value={`${stats.net_pnl >= 0 ? '+' : ''}$${stats.net_pnl}`} sub={`Gross: $${stats.gross_pnl}`} color={stats.net_pnl >= 0 ? 'green' : 'red'} icon="money" />
         <StatCard label="Win Rate" value={`${stats.win_rate}%`} sub={`${stats.winning_trades}W / ${stats.losing_trades}L`} color="blue" icon="target" />
-        <StatCard label="Profit Factor" value={stats.profit_factor === Infinity ? '∞' : stats.profit_factor} sub={`Expectancy: $${stats.expectancy}`} color="gold" icon="flash" />
+        <StatCard label="Profit Factor" value={stats.profit_factor === null ? '—' : stats.profit_factor} sub={`Expectancy: $${stats.expectancy}`} color="gold" icon="flash" />
         <StatCard label="Total Trades" value={stats.total_trades} sub={`Fee: $${stats.total_fee}`} icon="chart" />
       </div>
 

@@ -94,7 +94,7 @@ export default function ExportPdfPage() {
         ['Net P/L',      `$${stats.net_pnl}`],
         ['Gross P/L',    `$${stats.gross_pnl}`],
         ['Total Fee',    `$${stats.total_fee}`],
-        ['Profit Factor', String(stats.profit_factor)],
+        ['Profit Factor', stats.profit_factor === null ? '—' : String(stats.profit_factor)],
         ['Expectancy',   `$${stats.expectancy}`],
         ['Max Drawdown', `$${stats.max_drawdown}`],
         ['Avg Win',      `$${stats.avg_win}`],
@@ -221,7 +221,7 @@ export default function ExportPdfPage() {
               ['Total Trades',  String(stats.total_trades),          ''],
               ['Win Rate',      `${stats.win_rate}%`,                stats.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400'],
               ['Net P/L',       `${stats.net_pnl >= 0 ? '+' : ''}$${stats.net_pnl}`, stats.net_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'],
-              ['Profit Factor', String(stats.profit_factor),         'text-amber-400'],
+              ['Profit Factor', stats.profit_factor === null ? '—' : String(stats.profit_factor), 'text-amber-400'],
               ['Max Drawdown',  `-$${stats.max_drawdown}`,           'text-red-400'],
               ['Total Fee',     `$${stats.total_fee}`,               ''],
             ].map(([label, value, color]) => (

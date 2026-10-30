@@ -199,13 +199,21 @@ export interface DashboardStats {
   winning_trades: number;
   losing_trades: number;
   breakeven_trades: number;
+  /** Trade selesai yang `net_pnl`-nya benar-benar ada. Semua metrik uang
+   *  di bawah dihitung HANYA dari baris-baris ini. */
+  trades_dengan_pnl: number;
+  /** Trade selesai yang belum punya nominal P/L — mis. kiriman bot-futures,
+   *  yang tahu hasil dan R tapi tidak tahu modal pemilik jurnal. */
+  trades_tanpa_pnl: number;
   win_rate: number;
   gross_pnl: number;
   net_pnl: number;
   total_fee: number;
   avg_win: number;
   avg_loss: number;
-  profit_factor: number;
+  /** null kalau belum ada satu pun kerugian kas. Sengaja bukan Infinity:
+   *  Infinity berubah jadi null saat snapshot ditulis ke JSONB. */
+  profit_factor: number | null;
   expectancy: number;
   max_drawdown: number;
   best_trade_pnl: number;
@@ -222,6 +230,7 @@ export interface PerformanceByDimension {
   wins: number;
   losses: number;
   win_rate: number;
+  trades_dengan_pnl: number;
   gross_pnl: number;
   net_pnl: number;
   avg_pnl: number;
