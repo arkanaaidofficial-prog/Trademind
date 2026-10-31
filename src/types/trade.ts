@@ -66,6 +66,12 @@ export interface Trade {
   net_pnl?: number;
   result?: TradeResult;
   r_multiple?: number;
+  /** Harga TEREKSTREM yang MELAWAN posisi selama ia terbuka.
+   *  LONG: terendah. SHORT: tertinggi. null = tidak diketahui. */
+  mae_price?: number;
+  /** Harga TEREKSTREM yang MENDUKUNG posisi selama ia terbuka.
+   *  LONG: tertinggi. SHORT: terendah. null = tidak diketahui. */
+  mfe_price?: number;
 
   // Context
   market_condition?: MarketCondition;
@@ -264,6 +270,32 @@ export interface StatistikR {
   beruntun_kalah_max: number;
   beruntun_menang_max: number;
   /** false selama trade ber-R masih di bawah MIN_SAMPEL_LAYAK. */
+  cukup_sampel: boolean;
+}
+
+/**
+ * Statistik ekskursi (MAE / MFE).
+ *
+ * Vonis `stop_terlalu_ketat` dan `keluar_terlalu_cepat` bernilai null
+ * selama sampelnya belum cukup. null = BELUM TAHU; false = sudah
+ * diperiksa dan aman. Menyamakan keduanya adalah cara paling halus
+ * untuk berbohong lewat dashboard.
+ */
+export interface StatistikEkskursi {
+  trades_dengan_mae: number;
+  trades_dengan_mfe: number;
+  mae_rata: number | null;
+  /** Rata-rata MAE pada trade yang MENANG — penjawab "stop terlalu ketat?". */
+  mae_rata_menang: number | null;
+  /** Persentil 90 MAE kemenangan: batas stop yang terukur, bukan tebakan. */
+  mae_p90_menang: number | null;
+  mfe_rata: number | null;
+  /** Rata-rata MFE pada trade yang KALAH — kekalahan yang sempat untung. */
+  mfe_rata_kalah: number | null;
+  /** R yang diraih dibagi R yang sempat tersedia. */
+  efisiensi: number | null;
+  stop_terlalu_ketat: boolean | null;
+  keluar_terlalu_cepat: boolean | null;
   cukup_sampel: boolean;
 }
 

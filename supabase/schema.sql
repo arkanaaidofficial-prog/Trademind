@@ -97,6 +97,15 @@ create table trades (
   result        text check (result in ('win','loss','breakeven')),
   r_multiple    numeric(8,2),
 
+  -- MAE / MFE: harga TEREKSTREM selama posisi terbuka.
+  -- LONG  : mae = terendah, mfe = tertinggi
+  -- SHORT : mae = tertinggi, mfe = terendah
+  -- Disimpan sebagai HARGA, bukan persen dan bukan R - harga tidak
+  -- punya satuan yang bisa tertukar, dan entry_price + stop_loss di
+  -- tabel ini sudah cukup untuk menurunkan sisanya.
+  mae_price     numeric(20,8),
+  mfe_price     numeric(20,8),
+
   market_condition text check (market_condition in (
                      'trending','ranging','volatile','low_volume','high_volume')),
   entry_reason  text,

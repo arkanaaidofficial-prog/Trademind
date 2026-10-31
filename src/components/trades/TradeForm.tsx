@@ -101,6 +101,8 @@ export default function TradeForm({ trade, userId, mode }: Props) {
     stop_loss:      trade?.stop_loss      ?? '',
     take_profit:    trade?.take_profit    ?? '',
     risk_amount:    trade?.risk_amount    ?? '',
+    mae_price:      trade?.mae_price      ?? '',
+    mfe_price:      trade?.mfe_price      ?? '',
     risk_percent:   trade?.risk_percent   ?? '',
     fee:            trade?.fee            ?? '',
     funding_fee:    trade?.funding_fee    ?? '',
@@ -243,6 +245,8 @@ export default function TradeForm({ trade, userId, mode }: Props) {
       stop_loss:      form.stop_loss      ? Number(form.stop_loss)     : null,
       take_profit:    form.take_profit    ? Number(form.take_profit)   : null,
       risk_amount:    form.risk_amount    ? Number(form.risk_amount)   : null,
+      mae_price:      form.mae_price      ? Number(form.mae_price)     : null,
+      mfe_price:      form.mfe_price      ? Number(form.mfe_price)     : null,
       risk_percent:   form.risk_percent   ? Number(form.risk_percent)  : null,
       fee:            form.fee            ? Number(form.fee)           : 0,
       funding_fee:    form.trade_account_type === 'spot' ? 0 : form.funding_fee ? Number(form.funding_fee) : 0,
@@ -585,6 +589,31 @@ export default function TradeForm({ trade, userId, mode }: Props) {
                 <input type="number" step="any"
                   className={inp + (form.net_pnl && Number(form.net_pnl) >= 0 ? ' text-emerald-400' : form.net_pnl ? ' text-red-400' : '')}
                   value={form.net_pnl} onChange={e => handleNetPnl(e.target.value)} placeholder="63" />
+              </div>
+            </div>
+            {/* MAE / MFE — harga TEREKSTREM selama posisi terbuka.
+                Diisi harga, bukan persen: harga tidak punya satuan yang
+                bisa tertukar, dan R-nya diturunkan dari entry + SL. */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>
+                  Harga terjauh MELAWAN (MAE)
+                </label>
+                <input type="number" step="any" className={inp} value={form.mae_price}
+                  onChange={e => set('mae_price', e.target.value)} placeholder="66200" />
+                <p className="text-gray-600 text-[10px] mt-1">
+                  {form.position_type === 'short' ? 'harga TERTINGGI' : 'harga TERENDAH'} selama posisi terbuka
+                </p>
+              </div>
+              <div>
+                <label className={lbl}>
+                  Harga terjauh MENDUKUNG (MFE)
+                </label>
+                <input type="number" step="any" className={inp} value={form.mfe_price}
+                  onChange={e => set('mfe_price', e.target.value)} placeholder="69400" />
+                <p className="text-gray-600 text-[10px] mt-1">
+                  {form.position_type === 'short' ? 'harga TERENDAH' : 'harga TERTINGGI'} selama posisi terbuka
+                </p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

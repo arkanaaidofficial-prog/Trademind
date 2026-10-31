@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, L
 import type { Trade } from '@/types/trade'
 import { calcPerformanceByDimension } from '@/lib/calculations/stats'
 import { kelompokPerHari, kelompokPerJam, kurvaEkuitasR, zonaWaktuBawaan } from '@/lib/calculations/analytics'
+import { calcStatistikEkskursi, AMBANG_MAE_MENANG, AMBANG_EFISIENSI } from '@/lib/calculations/ekskursi'
 
 type Psych = {
   trade_id: string
@@ -131,6 +132,7 @@ export default function AnalyticsPage() {
   const dayData = useMemo(() => kelompokPerHari(trades, zona), [trades, zona])
   const hourData = useMemo(() => kelompokPerJam(trades, zona), [trades, zona])
   const kurvaR = useMemo(() => kurvaEkuitasR(trades, zona), [trades, zona])
+  const eks = useMemo(() => calcStatistikEkskursi(trades), [trades])
 
   // Emotion analytics - join trades + psychology
   const emotionData = useMemo(() => {
@@ -246,6 +248,85 @@ export default function AnalyticsPage() {
               <Line type="monotone" dataKey="r" stroke="#a855f7" strokeWidth={2} dot={false} name="R kumulatif" />
             </LineChart>
           </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* MAE / MFE — dua pertanyaan yang tidak bisa dijawab angka lain */}
+      {(eks.trades_dengan_mae > 0 || eks.trades_dengan_mfe > 0) && (
+        <div className="bg-[#14141e] border border-[#2a2a3a] rounded-xl p-5 space-y-4">
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-gray-300 text-sm font-semibold">MAE / MFE</h3>
+            <span className="text-gray-500 text-xs">
+              {eks.trades_dengan_mae} trade punya MAE · {eks.trades_dengan_mfe} punya MFE
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              { l: 'MAE rata (menang)', v: eks.mae_rata_menang, s: 'seberapa dalam kemenangan sempat tertekan' },
+              { l: 'MAE p90 (menang)', v: eks.mae_p90_menang, s: '9 dari 10 kemenangan tertekan kurang dari ini' },
+              { l: 'MFE rata', v: eks.mfe_rata, s: 'gerakan yang sempat tersedia' },
+              { l: 'MFE rata (kalah)', v: eks.mfe_rata_kalah, s: 'kekalahan yang sempat untung' },
+            ].map(k => (
+              <div key={k.l} className="bg-[#0e0e18] border border-[#1e1e2e] rounded-xl p-3">
+                <p className="text-gray-500 text-[10px] uppercase tracking-wide">{k.l}</p>
+                <p className="text-white text-lg font-bold font-mono mt-1">
+                  {k.v === null ? '—' : `${k.v.toFixed(2)}R`}
+                </p>
+                <p className="text-gray-600 text-[10px] mt-1 leading-snug">{k.s}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {/* Vonis TIGA keadaan: null = belum tahu, bukan aman. */}
+            {[
+              {
+                judul: 'Apakah stop terlalu ketat?',
+                vonis: eks.stop_terlalu_ketat,
+                angka: eks.mae_rata_menang,
+                ambang: AMBANG_MAE_MENANG,
+                satuan: 'R',
+                ya: `Kemenangan rata-rata tertekan ${eks.mae_rata_menang?.toFixed(2)}R sebelum berbalik. Stop yang sedikit lebih ketat akan membunuhnya sebelum sempat bekerja.`,
+                tidak: `Kemenangan jarang tertekan dalam (rata ${eks.mae_rata_menang?.toFixed(2)}R). Stop sekarang punya kelonggaran.`,
+              },
+              {
+                judul: 'Apakah keluar terlalu cepat?',
+                vonis: eks.keluar_terlalu_cepat,
+                angka: eks.efisiensi,
+                ambang: AMBANG_EFISIENSI,
+                satuan: '',
+                ya: `Hanya ${eks.efisiensi !== null ? Math.round(eks.efisiensi * 100) : '—'}% dari gerakan yang tersedia berhasil ditangkap.`,
+                tidak: `${eks.efisiensi !== null ? Math.round(eks.efisiensi * 100) : '—'}% dari gerakan yang tersedia tertangkap.`,
+              },
+            ].map(d => (
+              <div key={d.judul} className={`rounded-xl border p-4 ${
+                d.vonis === null ? 'border-[#2a2a3a] bg-[#0e0e18]'
+                  : d.vonis ? 'border-amber-500/40 bg-amber-950/20'
+                  : 'border-emerald-900/40 bg-emerald-950/20'}`}>
+                <p className="text-gray-300 text-xs font-semibold mb-1">{d.judul}</p>
+                {d.vonis === null ? (
+                  <>
+                    <p className="text-gray-400 text-sm font-bold">Belum bisa dijawab</p>
+                    <p className="text-gray-600 text-[11px] mt-1 leading-snug">
+                      Sampelnya belum cukup. Angkanya tetap ditampilkan di atas, tapi vonisnya ditahan —
+                      &quot;belum tahu&quot; dan &quot;sudah diperiksa, aman&quot; adalah dua hal berbeda.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className={`text-sm font-bold ${d.vonis ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {d.vonis ? 'YA' : 'Tidak'}
+                    </p>
+                    <p className="text-gray-400 text-[11px] mt-1 leading-snug">{d.vonis ? d.ya : d.tidak}</p>
+                    <p className="text-gray-600 text-[10px] mt-1">
+                      ambang {d.ambang}{d.satuan}
+                    </p>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

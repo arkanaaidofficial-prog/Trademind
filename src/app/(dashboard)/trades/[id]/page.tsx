@@ -11,6 +11,7 @@ import {
 } from '@/lib/supabase/storage'
 import { formatTradeAccountType } from '@/types/trade-account'
 import { toast } from 'sonner'
+import { maeR, mfeR } from '@/lib/calculations/ekskursi'
 import type { Trade, TradePsychology } from '@/types/trade'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 
@@ -239,6 +240,12 @@ export default function TradeDetailPage() {
         <Row label="Risk Amount" value={trade.risk_amount ? `$${trade.risk_amount}` : null} mono />
         <Row label="Risk %" value={trade.risk_percent ? `${trade.risk_percent}%` : null} />
         <Row label="R-Multiple" value={trade.r_multiple ? `${trade.r_multiple}R` : null} />
+        <Row label="MAE (terjauh melawan)" value={(() => {
+          const v = maeR(trade); return v === null ? null : `${v.toFixed(2)}R`
+        })()} />
+        <Row label="MFE (terjauh mendukung)" value={(() => {
+          const v = mfeR(trade); return v === null ? null : `${v.toFixed(2)}R`
+        })()} />
         {!spotTrade && <Row label="Funding Fee" value={trade.funding_fee ? `$${trade.funding_fee}` : '$0'} mono />}
         {trade.bot_name && <Row label="Bot" value={`${trade.bot_name}${trade.bot_version ? ` ${trade.bot_version}` : ''}`} />}
       </div>
